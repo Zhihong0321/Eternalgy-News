@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <title>Newsly • AI News Aggregator</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js" defer=""></script>
+  <style>
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+  </style>
+</head>
+
+<body class="min-h-screen bg-slate-50 text-slate-900 antialiased flex justify-center">
+  <div id="app-root" class="w-full max-w-md min-h-screen bg-slate-50 text-slate-900 flex flex-col transition-colors"
+    style="
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, 'SF Pro Text',
+          'Inter', 'Segoe UI', sans-serif;
+      ">
+    <!-- Safe area padding -->
+    <div class="flex-1 flex flex-col pb-4 px-4 pt-6 gap-4">
+      <!-- Top bar -->
+      <header class="flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <div
+            class="h-8 w-8 rounded-full bg-slate-900 flex items-center justify-center text-xs font-semibold tracking-tight text-slate-50">
+            N
+          </div>
+          <div class="flex flex-col leading-tight">
+            <span class="text-base font-semibold tracking-tight">
+              Newsly
+            </span>
+            <span class="text-sm text-slate-500"> Curated in real-time </span>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <!-- Light/Dark switcher -->
+          <button id="theme-toggle"
+            class="h-9 rounded-full border border-slate-200 flex items-center gap-1.5 px-2.5 bg-white/80 hover:bg-slate-100 transition-colors"
+            type="button" aria-label="Toggle theme">
+            <div class="relative flex items-center justify-between w-10 h-5 rounded-full bg-slate-900/90">
+              <div id="theme-knob"
+                class="absolute h-4 w-4 rounded-full bg-white shadow transform translate-x-1 transition-transform">
+              </div>
+              <i data-lucide="sun" class="w-3 h-3 text-amber-300 ml-1" style="stroke-width: 1.5"></i>
+              <i data-lucide="moon-star" class="w-3 h-3 text-slate-200 mr-1 opacity-60" style="stroke-width: 1.5"></i>
+            </div>
+          </button>
+
+          <button
+            class="h-9 w-9 rounded-full border border-slate-200 flex items-center justify-center hover:bg-slate-100 transition-colors"
+            aria-label="Search">
+            <i data-lucide="search" class="w-4 h-4 text-slate-700" style="stroke-width: 1.5"></i>
+          </button>
+        </div>
+      </header>
+
+      <!-- Category pills -->
+      <section class="-mx-4">
+        <div id="tags-container" class="flex items-center gap-2 overflow-x-auto no-scrollbar px-4">
+          <button onclick="filterByTag(null)"
+            class="shrink-0 rounded-full bg-slate-900 text-slate-50 text-sm font-medium tracking-tight px-3 py-1.5">
+            All
+          </button>
+          <!-- Tags will be injected here -->
+        </div>
+      </section>
+
+      <!-- Main Content -->
+      <main class="flex-1 flex flex-col gap-4">
+        <!-- Hero story container -->
+        <section id="hero-container" class="space-y-3 hidden">
+          <!-- Hero story will be injected here -->
+        </section>
+
+        <!-- Divider -->
+        <div class="flex items-center gap-2">
+          <span class="h-px flex-1 bg-slate-200"></span>
+          <span class="text-[0.65rem] uppercase tracking-[0.18em] text-slate-400">
+            Latest Headlines
+          </span>
+          <span class="h-px flex-1 bg-slate-200"></span>
+        </div>
+
+        <!-- Headlines list -->
+        <section id="news-list" class="space-y-2.5">
+          <!-- News items will be injected here -->
+          <div class="text-center py-10 text-slate-500">Loading news...</div>
+        </section>
+      </main>
+
+      <!-- Bottom bar -->
+      <nav
+        class="mt-2 rounded-2xl border border-slate-200 bg-white/80 backdrop-blur flex items-center justify-between px-6 py-2.5">
+        <button class="flex flex-col items-center gap-0.5 text-xs text-slate-900" onclick="window.location.reload()">
+          <i data-lucide="home" class="w-5 h-5" style="stroke-width: 1.5"></i>
+          <span class="text-[0.7rem] font-medium tracking-tight">
+            Home
+          </span>
+        </button>
+        <button class="flex flex-col items-center gap-0.5 text-xs text-slate-500">
+          <i data-lucide="globe" class="w-5 h-5" style="stroke-width: 1.5"></i>
+          <span class="text-[0.7rem]">Topics</span>
+        </button>
+        <button class="flex flex-col items-center gap-0.5 text-xs text-slate-500">
+          <i data-lucide="bookmark" class="w-5 h-5" style="stroke-width: 1.5"></i>
+          <span class="text-[0.7rem]">Saved</span>
+        </button>
+        <button class="flex flex-col items-center gap-0.5 text-xs text-slate-500">
+          <i data-lucide="user" class="w-5 h-5" style="stroke-width: 1.5"></i>
+          <span class="text-[0.7rem]">Profile</span>
+        </button>
+      </nav>
+    </div>
+
+    <!-- Modal for expanded article -->
+    <div id="article-modal" class="fixed inset-0 z-50 hidden" aria-labelledby="modal-title" role="dialog"
+      aria-modal="true">
+      <!-- Background backdrop -->
+      <div class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm transition-opacity opacity-0" id="modal-backdrop">
+      </div>
+
+      <div class="fixed inset-0 z-10 overflow-y-auto">
+        <div class="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
+          <!-- Modal panel -->
+          <div
+            class="relative transform overflow-hidden rounded-lg bg-white text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+            id="modal-panel">
+            <div class="bg-white px-4 pb-4 pt-5 sm:p-6 sm:pb-4">
+              <div class="sm:flex sm:items-start">
+                <div class="mt-3 text-center sm:ml-4 sm:mt-0 sm:text-left w-full">
+                  <div class="flex justify-between items-start">
+                    <h3 class="text-xl font-semibold leading-6 text-slate-900 pr-8" id="modal-title">
+                      Article Title
+                    </h3>
+                    <button type="button"
+                      class="rounded-md bg-white text-slate-400 hover:text-slate-500 focus:outline-none"
+                      onclick="closeModal()">
+                      <span class="sr-only">Close</span>
+                      <i data-lucide="x" class="w-6 h-6"></i>
+                    </button>
+                  </div>
+                  <div class="mt-1 flex items-center gap-2 text-sm text-slate-500">
+                    <span id="modal-source" class="font-medium">Source</span>
+                    <span class="h-1 w-1 rounded-full bg-slate-300"></span>
+                    <span id="modal-date">Date</span>
+                  </div>
+                  <div class="mt-4">
+                    <div id="modal-content" class="text-sm text-slate-600 space-y-2 whitespace-pre-line">
+                      <!-- Content goes here -->
+                    </div>
+                  </div>
+
+                  <div class="mt-6 pt-4 border-t border-slate-100 flex justify-between items-center">
+                    <a id="modal-link" href="#" target="_blank"
+                      class="text-sm font-medium text-emerald-600 hover:text-emerald-500 flex items-center gap-1">
+                      Read original <i data-lucide="external-link" class="w-3 h-3"></i>
+                    </a>
+                    <div id="modal-tags" class="flex gap-1">
+                      <!-- Tags -->
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      let currentTag = null;
+
+      // Format relative time
+      function timeAgo(dateString) {
+        const date = new Date(dateString);
+        const now = new Date();
+        const seconds = Math.floor((now - date) / 1000);
+
+        let interval = seconds / 31536000;
+        if (interval > 1) return Math.floor(interval) + " years ago";
+
+        interval = seconds / 2592000;
+        if (interval > 1) return Math.floor(interval) + " months ago";
+
+        interval = seconds / 86400;
+        if (interval > 1) return Math.floor(interval) + " days ago";
+
+        interval = seconds / 3600;
+        if (interval > 1) return Math.floor(interval) + " hrs ago";
+
+        interval = seconds / 60;
+        if (interval > 1) return Math.floor(interval) + " min ago";
+
+        return "Just now";
+      }
+
+      // Modal functions
+      function openModal(item) {
+        const modal = document.getElementById('article-modal');
+        const backdrop = document.getElementById('modal-backdrop');
+        const panel = document.getElementById('modal-panel');
+
+        // Populate content
+        document.getElementById('modal-title').textContent = item.title;
+        document.getElementById('modal-source').textContent = item.source || 'Unknown';
+        document.getElementById('modal-date').textContent = timeAgo(item.discovered_at);
+        document.getElementById('modal-content').textContent = item.content || 'No content available.';
+        document.getElementById('modal-link').href = item.url;
+
+        // Tags
+        const tagsContainer = document.getElementById('modal-tags');
+        tagsContainer.innerHTML = '';
+        if (item.tags) {
+          item.tags.forEach(tag => {
+            const span = document.createElement('span');
+            span.className = 'inline-flex items-center rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600';
+            span.textContent = tag;
+            tagsContainer.appendChild(span);
+          });
+        }
+
+        // Show modal
+        modal.classList.remove('hidden');
+        // Trigger animations
+        requestAnimationFrame(() => {
+          backdrop.classList.remove('opacity-0');
+          panel.classList.remove('opacity-0', 'translate-y-4', 'sm:translate-y-0', 'sm:scale-95');
+          panel.classList.add('opacity-100', 'translate-y-0', 'sm:scale-100');
+        });
+
+        lucide.createIcons();
+      }
+
+      function closeModal() {
+        const modal = document.getElementById('article-modal');
+        const backdrop = document.getElementById('modal-backdrop');
+        const panel = document.getElementById('modal-panel');
+
+        // Reverse animations
+        backdrop.classList.add('opacity-0');
+        panel.classList.remove('opacity-100', 'translate-y-0', 'sm:scale-100');
+        panel.classList.add('opacity-0', 'translate-y-4', 'sm:translate-y-0', 'sm:scale-95');
+
+        setTimeout(() => {
+          modal.classList.add('hidden');
+        }, 300); // Match transition duration
+      }
+
+      // Fetch full details and open modal
+      async function expandArticle(id) {
+        // Show loading state if needed, or just open with existing data if we have it
+        // For now, let's fetch fresh data to be sure
+        try {
+          const response = await fetch(`/api/news/${id}`);
+          if (!response.ok) throw new Error('Failed to fetch article');
+          const item = await response.json();
+          openModal(item);
+        } catch (error) {
+          console.error('Error fetching article details:', error);
+          // Fallback: try to find it in the list
+          // (Implementation omitted for brevity, assuming fetch works)
+        }
+      }
+
+      // Fetch and render tags
+      async function loadTags() {
+        try {
+          const response = await fetch('/api/tags');
+          const tags = await response.json();
+          const container = document.getElementById('tags-container');
+
+          tags.forEach(tag => {
+            const btn = document.createElement('button');
+            btn.className = "shrink-0 rounded-full border border-slate-200 text-slate-700 text-sm px-3 py-1.5 bg-white hover:bg-slate-50 transition-colors";
+            btn.textContent = tag;
+            btn.onclick = () => filterByTag(tag);
+            container.appendChild(btn);
+          });
+        } catch (error) {
+          console.error('Error loading tags:', error);
+        }
+      }
+
+      // Filter news by tag
+      function filterByTag(tag) {
+        currentTag = tag;
+
+        // Update UI
+        const buttons = document.getElementById('tags-container').querySelectorAll('button');
+        buttons.forEach(btn => {
+          if ((tag === null && btn.textContent === 'All') || btn.textContent === tag) {
+            btn.className = "shrink-0 rounded-full bg-slate-900 text-slate-50 text-sm font-medium tracking-tight px-3 py-1.5";
+          } else {
+            btn.className = "shrink-0 rounded-full border border-slate-200 text-slate-700 text-sm px-3 py-1.5 bg-white hover:bg-slate-50 transition-colors";
+          }
+        });
+
+        loadNews();
+      }
+
+      // Render a single news item
+      function createNewsItem(item) {
+        const time = timeAgo(item.discovered_at);
+        const domain = item.source || 'Unknown';
+        const tag = item.tags && item.tags.length > 0 ? item.tags[0] : 'News';
+
+        // Pass ID to expandArticle
+        return `
+            <article class="flex gap-3 py-2 border-b border-slate-200 last:border-none hover:bg-slate-50/50 transition-colors rounded-lg px-2 -mx-2 cursor-pointer" onclick="expandArticle(${item.id})">
+              <div class="flex-1 flex flex-col gap-1">
+                <div class="flex items-center gap-1.5 text-xs text-slate-500">
+                  <span class="uppercase tracking-[0.18em] text-emerald-600 font-medium">${tag}</span>
+                  <span class="h-3 w-px bg-slate-200"></span>
+                  <span>${time}</span>
+                </div>
+                <h2 class="text-sm font-medium tracking-tight leading-snug text-slate-900">
+                  ${item.title}
+                </h2>
+                <p class="text-sm text-slate-600 line-clamp-2">
+                  ${item.content ? item.content.substring(0, 100) + '...' : ''}
+                </p>
+                <div class="flex items-center gap-1 text-xs text-slate-500 mt-1">
+                  <img src="https://www.google.com/s2/favicons?domain=${item.url}&sz=16" class="w-3 h-3 opacity-70" onerror="this.style.display='none'"/>
+                  <span>${domain}</span>
+                </div>
+              </div>
+            </article>
+          `;
+      }
+
+      // Render hero item
+      function renderHero(item) {
+        const container = document.getElementById('hero-container');
+        if (!item) {
+          container.classList.add('hidden');
+          return;
+        }
+
+        const time = timeAgo(item.discovered_at);
+        const domain = item.source || 'Unknown';
+        const tag = item.tags && item.tags.length > 0 ? item.tags[0] : 'Top Story';
+
+        container.innerHTML = `
+            <div class="flex items-center justify-between">
+              <p class="text-xs text-slate-500 uppercase tracking-[0.18em]">
+                Top Story
+              </p>
+              <span class="text-xs text-slate-400">${time}</span>
+            </div>
+
+            <article class="rounded-2xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 overflow-hidden cursor-pointer hover:shadow-sm transition-shadow" onclick="expandArticle(${item.id})">
+              <div class="p-3 flex gap-3">
+                <div class="flex-1 flex flex-col gap-1.5">
+                  <div class="flex items-center gap-1.5 text-xs text-slate-500">
+                    <span class="uppercase tracking-[0.18em] text-emerald-600 font-medium">${tag}</span>
+                    <span class="h-4 w-px bg-slate-200"></span>
+                    <span>3 min read</span>
+                  </div>
+                  <h1 class="text-lg font-semibold tracking-tight leading-snug text-slate-900">
+                    ${item.title}
+                  </h1>
+                  <p class="text-sm text-slate-600 leading-snug line-clamp-3">
+                    ${item.content ? item.content.substring(0, 150) + '...' : ''}
+                  </p>
+                  <div class="flex items-center justify-between pt-1.5">
+                    <div class="flex items-center gap-2">
+                      <div class="h-6 w-6 rounded-full bg-slate-900 flex items-center justify-center text-[0.625rem] font-medium text-white">
+                        ${domain.substring(0, 2).toUpperCase()}
+                      </div>
+                      <div class="flex flex-col leading-tight">
+                        <span class="text-xs text-slate-900">
+                          ${domain}
+                        </span>
+                      </div>
+                    </div>
+                    <button class="inline-flex items-center gap-1 rounded-full bg-slate-900 text-slate-50 text-xs font-medium px-2.5 py-1">
+                      <span>Read</span>
+                      <i data-lucide="arrow-right" class="w-3 h-3" style="stroke-width:1.5"></i>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </article>
+          `;
+        container.classList.remove('hidden');
+      }
+
+      // Fetch and render news
+      async function loadNews() {
+        const listContainer = document.getElementById('news-list');
+        listContainer.innerHTML = '<div class="text-center py-10 text-slate-500"><i data-lucide="loader-2" class="w-6 h-6 animate-spin mx-auto mb-2"></i>Loading...</div>';
+        lucide.createIcons();
+
+        try {
+          let url = '/api/news?limit=20';
+          if (currentTag) {
+            url += `&tag=${encodeURIComponent(currentTag)}`;
+          }
+
+          const response = await fetch(url);
+          const news = await response.json();
+
+          if (news.length === 0) {
+            listContainer.innerHTML = '<div class="text-center py-10 text-slate-500">No news found.</div>';
+            document.getElementById('hero-container').classList.add('hidden');
+            return;
+          }
+
+          // Render hero (first item) only if no tag filter or if it's the first page
+          // For simplicity, always make the first item the hero
+          renderHero(news[0]);
+
+          // Render list (rest of items)
+          const listItems = news.slice(1);
+          if (listItems.length > 0) {
+            listContainer.innerHTML = listItems.map(createNewsItem).join('');
+          } else {
+            listContainer.innerHTML = '';
+          }
+
+          // Re-initialize icons
+          lucide.createIcons();
+
+        } catch (error) {
+          console.error('Error loading news:', error);
+          listContainer.innerHTML = '<div class="text-center py-10 text-red-500">Failed to load news.</div>';
+        }
+      }
+
+      // Theme handling
+      function applyTheme(theme) {
+        const root = document.getElementById("app-root");
+        const body = document.body;
+        const knob = document.getElementById("theme-knob");
+        const modalPanel = document.getElementById("modal-panel");
+
+        if (!root || !body || !knob) return;
+
+        if (theme === "dark") {
+          body.classList.remove("bg-slate-50", "text-slate-900");
+          body.classList.add("bg-slate-950", "text-slate-50");
+
+          root.classList.remove("bg-slate-50", "text-slate-900");
+          root.classList.add("bg-slate-950", "text-slate-50");
+
+          if (modalPanel) {
+            modalPanel.classList.remove("bg-white", "text-slate-900");
+            modalPanel.classList.add("bg-slate-900", "text-slate-50");
+          }
+
+          knob.style.transform = "translateX(1.25rem)";
+        } else {
+          body.classList.remove("bg-slate-950", "text-slate-50");
+          body.classList.add("bg-slate-50", "text-slate-900");
+
+          root.classList.remove("bg-slate-950", "text-slate-50");
+          root.classList.add("bg-slate-50", "text-slate-900");
+
+          if (modalPanel) {
+            modalPanel.classList.remove("bg-slate-900", "text-slate-50");
+            modalPanel.classList.add("bg-white", "text-slate-900");
+          }
+
+          knob.style.transform = "translateX(0.25rem)";
+        }
+      }
+
+      window.addEventListener("DOMContentLoaded", () => {
+        if (window.lucide) {
+          window.lucide.createIcons();
+        }
+
+        const toggle = document.getElementById("theme-toggle");
+        const prefersDark = window.matchMedia &&
+          window.matchMedia("(prefers-color-scheme: dark)").matches;
+        const storedTheme = localStorage.getItem("newsly-theme");
+        const initialTheme = storedTheme || (prefersDark ? "dark" : "light");
+
+        applyTheme(initialTheme);
+
+        if (toggle) {
+          toggle.addEventListener("click", () => {
+            const current =
+              (localStorage.getItem("newsly-theme") || initialTheme) ===
+                "dark"
+                ? "dark"
+                : "light";
+            const next = current === "dark" ? "light" : "dark";
+            localStorage.setItem("newsly-theme", next);
+            applyTheme(next);
+          });
+        }
+
+        // Initial load
+        loadTags();
+        loadNews();
+      });
+    </script>
+  </div>
+</body>
+
+</html>
