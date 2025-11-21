@@ -12,6 +12,24 @@ class NewsSearchModule:
         self.search_client = SearchClient()
         self.db = Database()
         self.processor_worker = processor_worker
+
+    def _build_search_prompt(self, user_intent: str) -> str:
+        """
+        Wrap the user-provided intent in a strict schema so the model always
+        returns a predictable JSON array of URL/title pairs.
+        """
+        return f"""
+You are a news URL selector. Based on the user intent, return ONLY a JSON array (no Markdown/code fences/text) of up to 10 objects:
+[{{"url": "https://...", "title": "Story title"}}]
+Rules:
+- Output must be valid JSON: an array of objects with keys "url" and "title" only.
+- Strip tracking params; use canonical article URLs when possible.
+- Deduplicate URLs; prefer recent, source-relevant results that match time/location/topic hints.
+- Exclude social media, video shorts, ads, nav pages, or site front pages.
+- Do not include explanations or any text before/after the JSON array.
+
+User intent: {user_intent}
+""".strip()
     
     def execute_search(self, prompt: str, task_name: str, model_override: str = None) -> Dict:
         """
@@ -30,12 +48,14 @@ class NewsSearchModule:
 
         # Build a client with per-task model if provided
         search_client = SearchClient(model=model_override) if model_override else self.search_client
+
+        wrapped_prompt = self._build_search_prompt(prompt)
         
         # Execute search
-        urls = search_client.search(prompt)
+        urls = search_client.search(wrapped_prompt)
         
         if urls is None:
-            error_reason = self.search_client.last_error or "unknown error"
+            error_reason = search_client.last_error or "unknown error"
             return {
                 "success": False,
                 "error": f"Search failed: {error_reason}",
