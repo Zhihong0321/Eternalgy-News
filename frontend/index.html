@@ -442,7 +442,7 @@
 
         try {
           let url = "/api/news?limit=20";
-          if (currentTag) {
+          if (currentTag && currentTag !== "all") {
             url += `&tag=${encodeURIComponent(currentTag)}`;
           }
 
