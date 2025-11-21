@@ -10,8 +10,10 @@ PyYAML>=6.0.3,<7.0.0
 # Database
 psycopg2-binary>=2.9.0,<3.0.0
 
-# Content Extraction & Processing
-# Content now comes from the Jina Reader API (no additional local parser required)
+# API & Web
+fastapi>=0.115.0,<1.0.0
+uvicorn[standard]>=0.30.0,<1.0.0
+pydantic>=2.6.0,<3.0.0
 
 # Optional: Development & Testing
 # pytest>=7.0.0
