@@ -96,8 +96,20 @@
   </div>
 
   <script>
+    const runSearchBtn = document.getElementById("run-search");
+    const runJinaBtn = document.getElementById("run-jina");
+    const runRewriteBtn = document.getElementById("run-rewrite");
     const toast = document.getElementById("toast");
     const errorPanel = document.getElementById("error-panel");
+    function setLoading(btn, isLoading, loadingText = "Working...") {
+      if (!btn) return;
+      if (!btn.dataset.label) btn.dataset.label = btn.textContent;
+      btn.disabled = isLoading;
+      btn.textContent = isLoading ? loadingText : btn.dataset.label;
+      btn.classList.toggle("opacity-60", isLoading);
+      btn.classList.toggle("cursor-not-allowed", isLoading);
+    }
+
     function showToast(msg, variant = "success") {
       toast.textContent = msg;
       toast.className = `fixed bottom-6 right-6 px-4 py-3 rounded-xl text-sm font-semibold ${variant === "success" ? "bg-emerald-500 text-slate-900" : "bg-rose-500 text-white"}`;
@@ -130,11 +142,12 @@ Rules:
 
 User intent: ${intent}`.trim();
     }
-    document.getElementById("run-search").addEventListener("click", async () => {
+    runSearchBtn.addEventListener("click", async () => {
       searchWrapped.textContent = "";
       searchRaw.value = "";
       searchResults.innerHTML = "";
       showErrorPanel("");
+      setLoading(runSearchBtn, true, "Running...");
       try {
         const intent = searchPrompt.value || "";
         const wrappedLocal = buildWrappedPrompt(intent);
@@ -162,16 +175,19 @@ User intent: ${intent}`.trim();
         console.error(e);
         showErrorPanel(e.message);
         showToast("Error (see error panel)", "error");
+      } finally {
+        setLoading(runSearchBtn, false);
       }
     });
 
     const jinaUrl = document.getElementById("jina-url");
     const jinaParsed = document.getElementById("jina-parsed");
     const jinaRaw = document.getElementById("jina-raw");
-    document.getElementById("run-jina").addEventListener("click", async () => {
+    runJinaBtn.addEventListener("click", async () => {
       jinaParsed.textContent = "";
       jinaRaw.value = "";
       showErrorPanel("");
+      setLoading(runJinaBtn, true, "Sending...");
       try {
         const res = await fetch("/api/pipeline/jina", {
           method: "POST",
@@ -191,15 +207,54 @@ User intent: ${intent}`.trim();
         console.error(e);
         showErrorPanel(e.message);
         showToast("Error (see error panel)", "error");
+      } finally {
+        setLoading(runJinaBtn, false);
       }
     });
 
     const rwParsed = document.getElementById("rw-parsed");
     const rwRaw = document.getElementById("rw-raw");
+    const rwPromptInput = document.getElementById("rw-prompt");
+    const rwModelInput = document.getElementById("rw-model");
+    const defaultRewritePrompt = `==== Prompt for NEWS Rewriter AI =======
+
+You are an expert News Analyst, Multilingual Content Specialist, and the lead editor shaping copy for our live dashboard. Rewrite each story as a production-ready brief in first-person voice, reporting the facts directly without saying "the article" or "this story." Everything you deliver must stay within the JSON structure shown below and follow all extraction, formatting, and translation rules.
+
+[b]--- INPUT DATA ---[/b]
+[b]Article Title:[/b] {title}
+[b]Article Date:[/b] {date}
+[b]Source URL:[/b] {url}
+[b]Raw Content (JINA AI Scrape):[/b]
+{content}
+
+[b]--- PROCESSING & OUTPUT RULES ---[/b]
+1. Extract ONLY info related to the Article Title; drop boilerplate/ads/nav.
+2. Summarize key facts into bullet points for \`news content (en)\` in first-person voice.
+3. Generate concise headlines for \`title_en\`, \`title_zh\`, and \`title_ms\` (no BBcode/bullets).
+4. Translate the English bullets into Simplified Chinese and Bahasa Melayu (no BBcode).
+5. Pick exactly 3 tags from: solar, wind, battery, policy, malaysia, asean, china, us, euro, renewable.
+6. No emojis. Output a single valid JSON object:
+{{
+  "title_en": "Headline",
+  "title_zh": "Chinese headline",
+  "title_ms": "Malay headline",
+  "news date": "{date}",
+  "news source url": "{url}",
+  "news content (en)": "- bullet...",
+  "news content (zh-cn)": "- bullet...",
+  "news content (my)": "- bullet...",
+  "tags (pick 3)": ["tag1","tag2","tag3"]
+}}
+===============================
+Your output is passed to the next stage, so follow all rules strictly.`;
+
+    rwPromptInput.value = defaultRewritePrompt;
+
     document.getElementById("run-rewrite").addEventListener("click", async () => {
       rwParsed.textContent = "";
       rwRaw.value = "";
       showErrorPanel("");
+      setLoading(runRewriteBtn, true, "Rewriting...");
       try {
         const res = await fetch("/api/pipeline/rewrite", {
           method: "POST",
@@ -209,8 +264,8 @@ User intent: ${intent}`.trim();
             date: document.getElementById("rw-date").value || "",
             url: document.getElementById("rw-url").value || "",
             content: document.getElementById("rw-content").value || "",
-            prompt: document.getElementById("rw-prompt").value || "",
-            model: document.getElementById("rw-model").value || ""
+            prompt: rwPromptInput.value || "",
+            model: rwModelInput.value || ""
           })
         });
         const data = await res.json();
@@ -222,6 +277,8 @@ User intent: ${intent}`.trim();
         console.error(e);
         showErrorPanel(e.message);
         showToast("Error (see error panel)", "error");
+      } finally {
+        setLoading(runRewriteBtn, false);
       }
     });
 
@@ -230,11 +287,15 @@ User intent: ${intent}`.trim();
         const res = await fetch("/api/rewriter/prompt");
         const data = await res.json();
         if (res.ok) {
-          document.getElementById("rw-prompt").value = data.prompt || "";
-          document.getElementById("rw-model").value = data.model || "";
+          rwPromptInput.value = data.prompt || defaultRewritePrompt;
+          rwModelInput.value = data.model || "";
+        } else {
+          showErrorPanel(`Prompt load failed; using fallback. ${data.detail || ""}`.trim());
         }
       } catch (e) {
         console.error("Failed to load rewriter defaults", e);
+        showErrorPanel("Prompt load failed; using fallback prompt.");
+        rwPromptInput.value = defaultRewritePrompt;
       }
     }
 
