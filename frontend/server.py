@@ -11,6 +11,7 @@ from pydantic import BaseModel
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from news_search.database import Database
+from ai_processing.services.news_rewriter_prompt import NEWS_REWRITER_TEMPLATE
 
 app = FastAPI()
 
@@ -398,6 +399,9 @@ def get_rewriter_prompt():
     """Return the stored News Rewriter prompt."""
     try:
         prompt = db.get_rewriter_prompt()
+        # Fallback to the code-defined template if none saved yet
+        if not prompt:
+            prompt = NEWS_REWRITER_TEMPLATE
         return {"prompt": prompt or ""}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
