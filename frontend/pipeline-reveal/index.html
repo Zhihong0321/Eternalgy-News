@@ -76,8 +76,6 @@
           <textarea id="rw-content" rows="6" class="w-full bg-slate-950/60 border border-slate-800 rounded-xl px-3 py-2 text-sm" placeholder="Content from Jina"></textarea>
         </div>
         <div class="space-y-2">
-          <input id="rw-api-url" class="w-full bg-slate-950/60 border border-slate-800 rounded-xl px-3 py-2 text-sm" placeholder="API URL (optional, overrides env)" />
-          <input id="rw-api-key" class="w-full bg-slate-950/60 border border-slate-800 rounded-xl px-3 py-2 text-sm" placeholder="API Key (optional, overrides env)" />
           <input id="rw-model" class="w-full bg-slate-950/60 border border-slate-800 rounded-xl px-3 py-2 text-sm" placeholder="Rewriter model, e.g. openai/gpt-oss-20b:free" />
           <textarea id="rw-prompt" rows="8" class="w-full bg-slate-950/60 border border-slate-800 rounded-xl px-3 py-2 text-sm" placeholder="Rewriter prompt (placeholders {title},{date},{url},{content})"></textarea>
         </div>
@@ -218,8 +216,6 @@ User intent: ${intent}`.trim();
     const rwRaw = document.getElementById("rw-raw");
     const rwPromptInput = document.getElementById("rw-prompt");
     const rwModelInput = document.getElementById("rw-model");
-    const rwApiKeyInput = document.getElementById("rw-api-key");
-    const rwApiUrlInput = document.getElementById("rw-api-url");
     const defaultRewritePrompt = `==== Prompt for NEWS Rewriter AI =======
 
 You are an expert News Analyst, Multilingual Content Specialist, and the lead editor shaping copy for our live dashboard. Rewrite each story as a production-ready brief in first-person voice, reporting the facts directly without saying "the article" or "this story." Everything you deliver must stay within the JSON structure shown below and follow all extraction, formatting, and translation rules.
@@ -253,13 +249,6 @@ You are an expert News Analyst, Multilingual Content Specialist, and the lead ed
 Your output is passed to the next stage, so follow all rules strictly.`;
 
     rwPromptInput.value = defaultRewritePrompt;
-    // Load persisted overrides
-    const savedApiKey = localStorage.getItem("pipeline_rw_api_key");
-    const savedApiUrl = localStorage.getItem("pipeline_rw_api_url");
-    if (savedApiKey) rwApiKeyInput.value = savedApiKey;
-    if (savedApiUrl) rwApiUrlInput.value = savedApiUrl;
-    rwApiKeyInput.addEventListener("input", () => localStorage.setItem("pipeline_rw_api_key", rwApiKeyInput.value));
-    rwApiUrlInput.addEventListener("input", () => localStorage.setItem("pipeline_rw_api_url", rwApiUrlInput.value));
 
     document.getElementById("run-rewrite").addEventListener("click", async () => {
       rwParsed.textContent = "";
@@ -276,9 +265,7 @@ Your output is passed to the next stage, so follow all rules strictly.`;
             url: document.getElementById("rw-url").value || "",
             content: document.getElementById("rw-content").value || "",
             prompt: rwPromptInput.value || "",
-            model: rwModelInput.value || "",
-            api_key: rwApiKeyInput.value || undefined,
-            api_url: rwApiUrlInput.value || undefined
+            model: rwModelInput.value || ""
           })
         });
         const data = await res.json();

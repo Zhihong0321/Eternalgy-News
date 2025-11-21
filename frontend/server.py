@@ -543,14 +543,16 @@ def pipeline_rewrite(body: Dict):
     content = (body or {}).get("content", "")
     prompt_template = (body or {}).get("prompt", "")
     model = (body or {}).get("model", "") or os.getenv("AI_MODEL", "")
-    api_key = (body or {}).get("api_key") or os.getenv("AI_API_KEY", "")
-    api_url = (body or {}).get("api_url") or os.getenv("AI_API_URL", "")
+    api_key = os.getenv("AI_API_KEY", "")
+    api_url = os.getenv("AI_API_URL", "")
     if not prompt_template:
         raise HTTPException(status_code=400, detail="prompt is required")
     if not content:
         raise HTTPException(status_code=400, detail="content is required")
     if not api_key:
-        raise HTTPException(status_code=400, detail="api_key is required (set env AI_API_KEY or pass api_key)")
+        raise HTTPException(status_code=500, detail="AI_API_KEY is not configured on the server")
+    if not api_url:
+        raise HTTPException(status_code=500, detail="AI_API_URL is not configured on the server")
 
     # Substitute placeholders if present
     prompt = prompt_template.replace("{title}", title).replace("{date}", date).replace("{url}", url).replace("{content}", content)
