@@ -108,6 +108,7 @@ class Database:
                     id SERIAL PRIMARY KEY,
                     task_name VARCHAR(255) UNIQUE NOT NULL,
                     prompt_template TEXT NOT NULL,
+                    model VARCHAR(255),
                     is_active BOOLEAN DEFAULT true,
                     schedule VARCHAR(100),
                     last_run TIMESTAMP,
@@ -119,6 +120,18 @@ class Database:
                 
                 CREATE INDEX IF NOT EXISTS idx_query_tasks_task_name ON query_tasks(task_name);
                 CREATE INDEX IF NOT EXISTS idx_query_tasks_is_active ON query_tasks(is_active);
+            """)
+            cursor.execute("""
+                ALTER TABLE query_tasks
+                ADD COLUMN IF NOT EXISTS model VARCHAR(255);
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS rewriter_prompts (
+                    id SERIAL PRIMARY KEY,
+                    prompt TEXT NOT NULL,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
             """)
 
             # Store per-run summaries for visibility in the UI
@@ -306,15 +319,15 @@ class Database:
             cursor.close()
             return dict(result) if result else None
     
-    def create_query_task(self, task_name: str, prompt_template: str, schedule: str = None, is_active: bool = True) -> int:
+    def create_query_task(self, task_name: str, prompt_template: str, schedule: str = None, is_active: bool = True, model: str = None) -> int:
         """Create a new query task"""
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                INSERT INTO query_tasks (task_name, prompt_template, schedule, is_active)
-                VALUES (%s, %s, %s, %s)
+                INSERT INTO query_tasks (task_name, prompt_template, schedule, is_active, model)
+                VALUES (%s, %s, %s, %s, %s)
                 RETURNING id
-            """, (task_name, prompt_template, schedule, is_active))
+            """, (task_name, prompt_template, schedule, is_active, model))
             task_id = cursor.fetchone()[0]
             cursor.close()
             return task_id
@@ -387,7 +400,8 @@ class Database:
             return [dict(row) for row in results]
 
     def update_query_task(self, task_name: str, prompt_template: Optional[str] = None,
-                          schedule: Optional[str] = None, is_active: Optional[bool] = None) -> bool:
+                          schedule: Optional[str] = None, is_active: Optional[bool] = None,
+                          model: Optional[str] = None) -> bool:
         """Update fields of an existing query task"""
         updates = []
         params = []
@@ -401,6 +415,9 @@ class Database:
         if is_active is not None:
             updates.append("is_active = %s")
             params.append(is_active)
+        if model is not None:
+            updates.append("model = %s")
+            params.append(model)
 
         if not updates:
             return False
@@ -525,6 +542,47 @@ class Database:
             rows = cursor.fetchall()
             cursor.close()
             return [dict(row) for row in rows]
+
+    def get_completed_missing_content(self, task_name: str, limit: int = 50) -> List[Dict]:
+        """Find completed links that have no processed_content to allow reprocessing."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor.execute("""
+                SELECT nl.id, nl.url, nl.title, nl.status
+                FROM news_links nl
+                LEFT JOIN processed_content pc ON pc.link_id = nl.id
+                WHERE nl.source_task = %s
+                  AND nl.status = 'completed'
+                  AND pc.link_id IS NULL
+                ORDER BY nl.processed_at DESC NULLS LAST, nl.discovered_at DESC
+                LIMIT %s
+            """, (task_name, limit))
+            rows = cursor.fetchall()
+            cursor.close()
+            return [dict(row) for row in rows]
+
+    def get_rewriter_prompt(self) -> str:
+        """Return the stored rewriter prompt or empty string if none."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT prompt FROM rewriter_prompts
+                ORDER BY updated_at DESC
+                LIMIT 1
+            """)
+            row = cursor.fetchone()
+            cursor.close()
+            return row[0] if row else ""
+
+    def set_rewriter_prompt(self, prompt: str):
+        """Save or update the rewriter prompt."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO rewriter_prompts (prompt)
+                VALUES (%s)
+            """, (prompt,))
+            cursor.close()
 
     def get_completed_missing_content(self, task_name: str, limit: int = 50) -> List[Dict]:
         """Find completed links that have no processed_content to allow reprocessing."""

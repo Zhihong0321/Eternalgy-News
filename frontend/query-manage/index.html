@@ -53,6 +53,13 @@
             Active
           </label>
         </div>
+        <div class="flex gap-4 flex-wrap">
+          <div class="flex-1 min-w-[180px]">
+            <label class="text-sm text-slate-400 block mb-1" for="new-task-model">Model (optional)</label>
+            <input id="new-task-model" name="model" placeholder="e.g. openai/gpt-oss-20b:free"
+              class="w-full bg-slate-950/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm focus:ring-2 focus:ring-emerald-400 outline-none" />
+          </div>
+        </div>
         <div class="flex justify-end">
           <button type="submit"
             class="px-5 py-2.5 rounded-2xl bg-emerald-500 text-slate-900 font-semibold text-sm transition hover:bg-emerald-400">
@@ -104,6 +111,11 @@
             <input id="edit-task-schedule" maxlength="64"
               class="w-full bg-slate-950/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm focus:ring-2 focus:ring-emerald-400 outline-none" />
           </div>
+          <div class="flex-1 min-w-[180px]">
+            <label class="text-sm text-slate-400 block mb-1" for="edit-task-model">Model</label>
+            <input id="edit-task-model" maxlength="255"
+              class="w-full bg-slate-950/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm focus:ring-2 focus:ring-emerald-400 outline-none" />
+          </div>
           <label class="flex items-center gap-2 text-sm text-slate-300">
             <input id="edit-task-active" type="checkbox" class="w-4 h-4 accent-emerald-500" />
             Active
@@ -121,6 +133,21 @@
         </div>
       </form>
     </section>
+
+    <section class="bg-slate-900/60 border border-slate-800 rounded-3xl p-6 shadow-2xl mt-8">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <p class="text-xs uppercase tracking-[0.4em] text-emerald-300">Rewriter Prompt</p>
+          <h2 class="text-xl font-semibold">News Rewriter prompt template</h2>
+          <p class="text-sm text-slate-400">Edit the prompt sent to the News Rewriter model.</p>
+        </div>
+        <button id="save-rewriter-prompt" class="px-4 py-2 rounded-2xl bg-emerald-500 text-slate-900 font-semibold text-sm transition hover:bg-emerald-400">
+          Save prompt
+        </button>
+      </div>
+      <textarea id="rewriter-prompt" rows="10"
+        class="w-full bg-slate-950/60 border border-slate-800 rounded-2xl px-4 py-3 text-sm focus:ring-2 focus:ring-emerald-400 outline-none"></textarea>
+    </section>
   </div>
 
   <div id="toast" class="fixed bottom-6 right-6 hidden max-w-xs rounded-2xl px-4 py-3 text-sm font-medium"></div>
@@ -133,6 +160,8 @@
     const updateForm = document.getElementById("update-task-form");
     const deleteBtn = document.getElementById("delete-task");
     const closeEditorBtn = document.getElementById("close-editor");
+    const saveRewriterBtn = document.getElementById("save-rewriter-prompt");
+    const rewriterPromptField = document.getElementById("rewriter-prompt");
 
     let currentTasks = [];
     let activeEditTask = null;
@@ -206,6 +235,7 @@
               <p class="${task.is_active ? "text-emerald-400" : "text-slate-500"} font-semibold">${task.is_active ? "Active" : "Inactive"}</p>
               <p class="mt-2 text-xs uppercase tracking-[0.3em]">Last run</p>
               <p class="text-slate-400">${executedAt || "Never"}</p>
+              ${task.model ? `<p class="text-xs text-slate-500">Model: ${task.model}</p>` : ""}
             </div>
           </div>
           <div class="mt-4 grid md:grid-cols-3 gap-3 text-xs text-slate-400">
@@ -432,6 +462,7 @@
       document.getElementById("edit-task-name").textContent = task.task_name;
       document.getElementById("edit-task-prompt").value = task.prompt_template || "";
       document.getElementById("edit-task-schedule").value = task.schedule || "";
+      document.getElementById("edit-task-model").value = task.model || "";
       document.getElementById("edit-task-active").checked = Boolean(task.is_active);
 
       editorPanel.classList.remove("hidden");
@@ -460,7 +491,8 @@
           body: JSON.stringify({
             prompt_template: prompt,
             schedule: schedule || null,
-            is_active: isActive
+            is_active: isActive,
+            model: document.getElementById("edit-task-model").value.trim() || null
           })
         });
 
@@ -523,7 +555,8 @@
             task_name: name,
             prompt_template: prompt,
             schedule: schedule || null,
-            is_active: active
+            is_active: active,
+            model: document.getElementById("new-task-model").value.trim() || null
           })
         });
 
@@ -544,7 +577,44 @@
 
     window.addEventListener("DOMContentLoaded", () => {
       loadTasks();
+      loadRewriterPrompt();
       lucide.createIcons();
+    });
+
+    async function loadRewriterPrompt() {
+      if (!rewriterPromptField) return;
+      try {
+        const res = await fetch("/api/rewriter/prompt");
+        const data = await res.json();
+        if (res.ok) {
+          rewriterPromptField.value = data.prompt || "";
+        } else {
+          showToast(data.detail || "Failed to load prompt", "error");
+        }
+      } catch (e) {
+        console.error(e);
+        showToast("Failed to load prompt", "error");
+      }
+    }
+
+    saveRewriterBtn?.addEventListener("click", async () => {
+      const prompt = rewriterPromptField.value || "";
+      try {
+        const res = await fetch("/api/rewriter/prompt", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          showToast("Rewriter prompt saved");
+        } else {
+          showToast(data.detail || "Save failed", "error");
+        }
+      } catch (e) {
+        console.error(e);
+        showToast("Save failed", "error");
+      }
     });
   </script>
 </body>

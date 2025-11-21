@@ -13,22 +13,26 @@ class NewsSearchModule:
         self.db = Database()
         self.processor_worker = processor_worker
     
-    def execute_search(self, prompt: str, task_name: str) -> Dict:
+    def execute_search(self, prompt: str, task_name: str, model_override: str = None) -> Dict:
         """
         Execute a search query and save results to database
         
         Args:
             prompt: Search prompt
             task_name: Name of the query task
+            model_override: Optional model name to use for this task
         
         Returns:
             Dictionary with search results and statistics
         """
         print(f"Executing search for task: {task_name}")
         print(f"Prompt: {prompt}")
+
+        # Build a client with per-task model if provided
+        search_client = SearchClient(model=model_override) if model_override else self.search_client
         
         # Execute search
-        urls = self.search_client.search(prompt)
+        urls = search_client.search(prompt)
         
         if urls is None:
             error_reason = self.search_client.last_error or "unknown error"
@@ -185,8 +189,8 @@ class NewsSearchModule:
                 "error": f"Task '{task_name}' is not active"
             }
         
-        # Execute search with task's prompt
-        return self.execute_search(task["prompt_template"], task_name)
+        # Execute search with task's prompt and optional model
+        return self.execute_search(task["prompt_template"], task_name, model_override=task.get("model"))
     
     def get_pending_links(self, limit: int = 100) -> List[Dict]:
         """Get pending news links for processing"""
