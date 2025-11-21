@@ -11,6 +11,7 @@ from pydantic import BaseModel
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from news_search.database import Database
+from news_search.search_client import SearchClient
 from ai_processing.services.news_rewriter_prompt import NEWS_REWRITER_TEMPLATE
 
 app = FastAPI()
@@ -245,7 +246,7 @@ from ai_processing.processor_with_content import ArticleProcessorWithContent
 from ai_processing.processor_adapter import ProcessorAdapter
 from ai_processing.config import AIConfig
 from ai_processing.services.ai_client import AIClient
-from ai_processing.services.jina_reader import JinaReaderConfig
+from ai_processing.services.jina_reader import JinaReader, JinaReaderConfig
 
 # Try to initialize AI processor
 try:
@@ -418,6 +419,173 @@ def set_rewriter_prompt(request: RewriterPromptUpdateRequest):
         return {"success": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# -----------------------------
+# Pipeline Reveal (no DB writes)
+# -----------------------------
+
+def _wrap_search_prompt(user_intent: str) -> str:
+    return f"""
+You are a news URL selector. Based on the user intent, return ONLY a JSON array (no Markdown/code fences/text) of up to 10 objects:
+[{{"url": "https://...", "title": "Story title"}}]
+Rules:
+- Output must be valid JSON: an array of objects with keys "url" and "title" only.
+- Strip tracking params; use canonical article URLs when possible.
+- Deduplicate URLs; prefer recent, source-matched results.
+- Exclude social media, video shorts, ads, nav pages, or homepages.
+- Do not include explanations or any text before/after the JSON array.
+
+User intent: {user_intent}
+""".strip()
+
+
+@app.post("/api/pipeline/search")
+def pipeline_search(body: Dict):
+    """Run search with strict wrapper; no DB writes."""
+    intent = (body or {}).get("prompt", "").strip()
+    if not intent:
+        raise HTTPException(status_code=400, detail="prompt is required")
+    wrapped = _wrap_search_prompt(intent)
+    client = SearchClient()
+    raw_response = None
+    try:
+        resp = requests.post(
+            client.api_url,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {client.api_key}"
+            },
+            json={
+                "model": client.model,
+                "messages": [{"role": "user", "content": wrapped}],
+                "response_format": {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "news_results",
+                        "strict": True,
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "results": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "url": {"type": "string"},
+                                            "title": {"type": "string"}
+                                        },
+                                        "required": ["url"],
+                                        "additionalProperties": False
+                                    }
+                                }
+                            },
+                            "required": ["results"],
+                            "additionalProperties": False
+                        }
+                    }
+                }
+            },
+            timeout=30
+        )
+        raw_response = resp.text
+        resp.raise_for_status()
+        data = resp.json()
+        message = data["choices"][0]["message"]
+        content = message.get("content", "")
+        parsed = []
+        try:
+            from json import loads
+            payload = content
+            if "```" in content:
+                start = content.find("```")
+                end = content.find("```", start + 3)
+                if end > start:
+                    payload = content[start + 3:end].strip()
+            payload_json = loads(payload)
+            if isinstance(payload_json, dict) and "results" in payload_json:
+                for item in payload_json["results"]:
+                    if isinstance(item, dict) and item.get("url"):
+                        parsed.append({"url": item["url"], "title": item.get("title", "")})
+            elif isinstance(payload_json, list):
+                for item in payload_json:
+                    if isinstance(item, dict) and item.get("url"):
+                        parsed.append({"url": item["url"], "title": item.get("title", "")})
+        except Exception:
+            parsed = []
+        return {
+            "success": True,
+            "wrapped_prompt": wrapped,
+            "parsed": parsed,
+            "raw": raw_response
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)} | raw={raw_response}")
+
+
+@app.post("/api/pipeline/jina")
+def pipeline_jina(body: Dict):
+    """Fetch a URL via Jina Reader and return raw/parsed."""
+    url = (body or {}).get("url", "").strip()
+    if not url:
+        raise HTTPException(status_code=400, detail="url is required")
+    reader = JinaReader()
+    result = reader.read_url(url)
+    return {"success": True, "parsed": result}
+
+
+@app.post("/api/pipeline/rewrite")
+def pipeline_rewrite(body: Dict):
+    """Run the news rewriter with user-provided prompt/model on provided content."""
+    title = (body or {}).get("title", "")
+    date = (body or {}).get("date", "")
+    url = (body or {}).get("url", "")
+    content = (body or {}).get("content", "")
+    prompt_template = (body or {}).get("prompt", "")
+    model = (body or {}).get("model", "") or os.getenv("AI_MODEL", "")
+    if not prompt_template:
+        raise HTTPException(status_code=400, detail="prompt is required")
+    if not content:
+        raise HTTPException(status_code=400, detail="content is required")
+
+    # Substitute placeholders if present
+    prompt = prompt_template.replace("{title}", title).replace("{date}", date).replace("{url}", url).replace("{content}", content)
+
+    client = AIClient(
+        api_url=os.getenv("AI_API_URL", ""),
+        api_key=os.getenv("AI_API_KEY", ""),
+        model=model or os.getenv("AI_MODEL", ""),
+        timeout=30,
+        max_retries=2
+    )
+    raw_response = None
+    try:
+        resp = client.chat_completion(
+            messages=[
+                {"role": "system", "content": "You are a careful, neutral news rewriter."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.2,
+            max_tokens=800
+        )
+        raw_response = resp
+        text = client.extract_content(resp)
+        parsed = None
+        error = None
+        try:
+            import json
+            parsed = json.loads(text)
+        except Exception as exc:
+            error = f"parse error: {exc}"
+        return {
+            "success": True,
+            "raw_text": text,
+            "raw_response": raw_response,
+            "parsed": parsed,
+            "error": error
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Rewrite failed: {str(e)} | raw={raw_response}")
 
 
 @app.post("/api/tasks/{task_name}/reprocess-missing")
