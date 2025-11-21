@@ -1,6 +1,7 @@
 import sys
 import os
-from typing import Optional, List
+from typing import Optional, List, Dict
+import requests
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -43,6 +44,84 @@ class QueryTaskUpdateRequest(BaseModel):
 def _run_task_by_name(task_name: str):
     """Shared helper to execute a query task"""
     return search_module.run_task(task_name)
+
+
+def _check_database() -> Dict[str, str]:
+    """Validate DB connectivity with a lightweight select."""
+    try:
+        with db.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT 1;")
+            cursor.fetchone()
+            cursor.close()
+        return {"status": "ok"}
+    except Exception as exc:
+        return {"status": "failed", "error": str(exc)}
+
+
+def _check_ai_api() -> Dict[str, str]:
+    """
+    Optionally validate the AI API key by issuing a minimal chat completion.
+    Disabled unless HEALTHCHECK_PING_AI=true to avoid unintended usage charges.
+    """
+    ai_config = AIConfig.from_env()
+    if not ai_config.api_key:
+        return {"status": "skipped", "reason": "AI_API_KEY not set"}
+    if not HEALTHCHECK_PING_AI:
+        return {"status": "skipped", "reason": "HEALTHCHECK_PING_AI is false"}
+
+    try:
+        client = AIClient(
+            api_url=ai_config.api_url,
+            api_key=ai_config.api_key,
+            model=ai_config.model,
+            timeout=min(ai_config.timeout, 10),
+            max_retries=1,
+        )
+        response = client.chat_completion(
+            messages=[{"role": "user", "content": "healthcheck"}],
+            temperature=0.0,
+            max_tokens=8,
+        )
+        preview = client.extract_content(response)[:80]
+        return {"status": "ok", "model": ai_config.model, "preview": preview}
+    except Exception as exc:
+        return {"status": "failed", "error": str(exc)}
+
+
+def _check_jina_reader() -> Dict[str, str]:
+    """
+    Optionally hit Jina Reader with a tiny request to confirm API reachability.
+    Disabled unless HEALTHCHECK_PING_JINA=true to avoid unnecessary calls.
+    """
+    config = JinaReaderConfig()
+    if not config.api_key:
+        return {"status": "skipped", "reason": "JINA_API_KEY not set"}
+    if not HEALTHCHECK_PING_JINA:
+        return {"status": "skipped", "reason": "HEALTHCHECK_PING_JINA is false"}
+
+    test_url = "https://example.com"
+    endpoint = f"{config.reader_base_url}/{test_url}"
+    headers = {
+        "Accept": "application/json",
+        "X-Return-Format": config.return_format,
+        "X-Retain-Images": config.retain_images,
+        "Authorization": f"Bearer {config.api_key}",
+    }
+
+    if config.no_cache:
+        headers["X-No-Cache"] = "true"
+
+    headers.update(config.extra_headers)
+
+    try:
+        resp = requests.get(endpoint, headers=headers, timeout=min(config.timeout, 10))
+        status = resp.status_code
+        if status == 200:
+            return {"status": "ok", "status_code": status}
+        return {"status": "failed", "status_code": status, "detail": resp.text[:80]}
+    except Exception as exc:
+        return {"status": "failed", "error": str(exc)}
 
 
 @app.get("/api/news")
@@ -162,6 +241,12 @@ from news_search.search_module import NewsSearchModule
 from news_search.processor_worker import ProcessorWorker
 from ai_processing.processor_with_content import ArticleProcessorWithContent
 from ai_processing.processor_adapter import ProcessorAdapter
+from ai_processing.config import AIConfig
+from ai_processing.services.ai_client import AIClient
+from ai_processing.services.jina_reader import JinaReaderConfig
+
+HEALTHCHECK_PING_AI = os.getenv("HEALTHCHECK_PING_AI", "false").lower() == "true"
+HEALTHCHECK_PING_JINA = os.getenv("HEALTHCHECK_PING_JINA", "false").lower() == "true"
 
 # Try to initialize AI processor
 try:
@@ -269,6 +354,36 @@ def run_query_task(task_name: str):
         return _run_task_by_name(task_name)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/health")
+def health():
+    """
+    Health check endpoint that validates:
+    - Database connectivity
+    - Optional AI API token handshake (set HEALTHCHECK_PING_AI=true)
+    - Optional Jina Reader handshake (set HEALTHCHECK_PING_JINA=true)
+    """
+    checks = {
+        "database": _check_database(),
+        "ai_api": _check_ai_api(),
+        "jina_reader": _check_jina_reader(),
+    }
+
+    overall_status = "ok"
+    for check in checks.values():
+        if check.get("status") == "failed":
+            overall_status = "failed"
+            break
+        if overall_status == "ok" and check.get("status") == "skipped":
+            overall_status = "degraded"
+
+    return {
+        "status": overall_status,
+        "checks": checks,
+        "region": os.getenv("REGION", "unknown"),
+        "version": os.getenv("RAILWAY_GIT_COMMIT_SHA") or os.getenv("COMMIT_SHA"),
+    }
 
 # Serve static files
 # We'll serve the current directory as static
