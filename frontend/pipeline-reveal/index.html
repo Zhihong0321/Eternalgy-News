@@ -118,20 +118,35 @@
     const searchWrapped = document.getElementById("search-wrapped");
     const searchRaw = document.getElementById("search-raw");
     const searchResults = document.getElementById("search-results");
+    function buildWrappedPrompt(intent) {
+      return `You are a news URL selector. Based on the user intent, return ONLY a JSON array (no Markdown/code fences/text) of up to 10 objects:
+[{"url": "https://...", "title": "Story title"}]
+Rules:
+- Output must be valid JSON: an array of objects with keys "url" and "title" only.
+- Strip tracking params; use canonical article URLs when possible.
+- Deduplicate URLs; prefer recent, source-matched results.
+- Exclude social media, video shorts, ads, nav pages, or homepages.
+- Do not include explanations or any text before/after the JSON array.
+
+User intent: ${intent}`.trim();
+    }
     document.getElementById("run-search").addEventListener("click", async () => {
       searchWrapped.textContent = "";
       searchRaw.value = "";
       searchResults.innerHTML = "";
       showErrorPanel("");
       try {
+        const intent = searchPrompt.value || "";
+        const wrappedLocal = buildWrappedPrompt(intent);
+        searchWrapped.textContent = wrappedLocal;
         const res = await fetch("/api/pipeline/search", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt: searchPrompt.value || "" })
+          body: JSON.stringify({ prompt: intent })
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || "Search failed");
-        searchWrapped.textContent = data.wrapped_prompt || "";
+        searchWrapped.textContent = data.wrapped_prompt || wrappedLocal;
         searchRaw.value = data.raw || "";
         (data.parsed || []).forEach(item => {
           const btn = document.createElement("button");
