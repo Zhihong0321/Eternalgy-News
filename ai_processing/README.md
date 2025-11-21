@@ -212,6 +212,10 @@ Detected Language
 Processed Article
 ```
 
+## News Rewriter Prompt
+
+After the Jina Reader fetch, the Markdown payload is rewritten by GPT-5-nano using the instructions stored in `ai_processing/services/news_rewriter_prompt.py`. That prompt locks in the BBcode rules, translation targets, tag list, and JSON schema that the downstream workflow depends on.
+
 ## Cost Estimation
 
 Based on 50 filtered articles per hour:

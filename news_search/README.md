@@ -122,13 +122,17 @@ search.run_task("malaysia_solar_pv_daily")
 db = Database()
 pending = db.get_pending_links()
 
-# 3. Process with your existing pipeline
+# 3. Process with your Jina Reader-powered pipeline
+from ai_processing.processor_with_content import ArticleProcessorWithContent
+from ai_processing.processor_adapter import ProcessorAdapter
+
+ai_processor = ArticleProcessorWithContent.from_env()
+adapter = ProcessorAdapter(ai_processor)
+
 for link in pending:
-    # Your HTML scraper + translator
-    content = scrape_and_translate(link['url'])
-    
-    # Update status
-    db.update_link_status(link['id'], 'completed')
+    processed = adapter.process(link['url'], title=link.get('title', ''))
+    status = 'completed' if processed.get('success') else 'failed'
+    db.update_link_status(link['id'], status)
 ```
 
 ## Cost Tracking

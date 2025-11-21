@@ -39,12 +39,14 @@
    
 5. AI PROCESSING (per URL)
    ↓
-   - HTTP scrape content
-   - Clean HTML
-   - Extract article text
-   - Translate to target language
+   - Fetch Markdown via the Jina Reader API (`r.jina.ai/<url>` with `X-Return-Format: markdown`, `X-Retain-Images: none`)
+   - Clean and summarize the Markdown payload
+   - Translate summaries to the target languages
    - Save to processed_content table
    - Update status='completed'
+
+**News Rewriter Prompt**  
+The prompt governing the BBcode rules, translations, and exact JSON output structure lives in `ai_processing/services/news_rewriter_prompt.py`; it consumes the Jina Reader Markdown before handing off to GPT-5-nano.
    
 6. ERROR HANDLING
    ↓
@@ -52,6 +54,9 @@
    - Exponential backoff
    - Save error message
    - Update status='failed'
+
+**Blocked Domains**  
+Once Jina returns 403/451, the worker writes the domain into `blacklisted_sites` and marks that link as `blocked`. Subsequent runs query that table first and skip any pending links from the blocked domain, so we never retry a doomed scrape.
 ```
 
 ## Database Schema

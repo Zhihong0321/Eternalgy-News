@@ -160,99 +160,19 @@ Stores discovered news URLs with deduplication.
 ```
 
 ### processed_content
-Stores cleaned and translated articles.
+Stores cleaned, translated, and localized headlines.
 
 ```sql
 - id (serial)
-- link_id (integer) - foreign key to news_links
-- title (text)
-- content (text) - point-form summary
-- translated_content (text) - JSON with EN/ZH/MS
-- metadata (jsonb)
+- link_id (integer) - foreign key to `news_links`
+- title (text) - fallback/raw headline
+- title_en (text) - cleaned English headline used for the UI
+- title_zh (text) - Simplified Chinese headline
+- title_ms (text) - Malay headline
+- content (text) - point-form summary (BBCode preserved here)
+- translated_content (text) - JSON blob with EN/ZH/MS bullet summaries
+- metadata (jsonb) - detected language, source, timestamps, etc.
 ```
-
-### query_tasks
-Manages reusable search queries.
-
-```sql
-- id (serial)
-- task_name (varchar)
-- prompt_template (text)
-- is_active (boolean)
-- last_run (timestamp)
-```
-
-## 🌐 Frontend Integration
-
-The system outputs structured JSON ready for any frontend framework:
-
-```json
-{
-  "id": 123,
-  "title": "Original title",
-  "title_en": "English title",
-  "title_zh": "中文标题",
-  "title_ms": "Tajuk Melayu",
-  "content": "• Point 1\n• Point 2\n• Point 3",
-  "url": "https://example.com/article",
-  "detected_language": "en",
-  "processed_at": "2025-11-18T10:30:00",
-  "metadata": {
-    "source": "example.com",
-    "word_count": 500
-  }
-}
-```
-
-**Coming Soon**: REST API and frontend template integration.
-
-## 🔄 Workflow Examples
-
-### Create a Query Task
-
-```python
-from news_search import Database
-
-db = Database()
-db.create_query_task(
-    task_name="tech_news",
-    prompt_template="Find latest technology news URLs. Return as JSON array."
-)
-```
-
-### Run Search and Process
-
-```python
-from news_search import NewsSearchModule, ProcessorWorker
-
-# Initialize
-search = NewsSearchModule()
-processor = ProcessorWorker()
-
-# Run search
-result = search.run_task("tech_news")
-print(f"Found {result['new_links']} new articles")
-
-# Process articles
-processor.process_pending_links(limit=10)
-```
-
-### Query Processed News
-
-```python
-from news_search import Database
-
-db = Database()
-content = db.get_processed_content(link_id=123)
-
-print(f"Title (EN): {content['title_en']}")
-print(f"Title (ZH): {content['title_zh']}")
-print(f"Title (MS): {content['title_ms']}")
-print(f"Content: {content['content']}")
-```
-
-## 🛠️ Configuration
-
 ### Environment Variables
 
 See `.env.example` for all configuration options:
@@ -308,3 +228,4 @@ Proprietary - All rights reserved.
 **Version**: 1.0.0  
 **Last Updated**: 2025-11-18  
 **Status**: Production Ready (Backend) | Frontend Integration Pending
+

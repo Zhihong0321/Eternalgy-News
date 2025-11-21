@@ -27,6 +27,24 @@ class NewsItem(BaseModel):
     discovered_at: str
     source: Optional[str]
 
+class QueryTaskCreateRequest(BaseModel):
+    task_name: str
+    prompt_template: str
+    schedule: Optional[str] = None
+    is_active: Optional[bool] = True
+
+
+class QueryTaskUpdateRequest(BaseModel):
+    prompt_template: Optional[str]
+    schedule: Optional[str]
+    is_active: Optional[bool]
+
+
+def _run_task_by_name(task_name: str):
+    """Shared helper to execute a query task"""
+    return search_module.run_task(task_name)
+
+
 @app.get("/api/news")
 def get_news(
     limit: int = 20, 
@@ -123,6 +141,22 @@ def get_tags():
         print(f"Error fetching tags: {e}")
         return ["Tech", "AI", "Business", "World"] # Fallback
 
+@app.get("/api/status")
+def get_status():
+    try:
+        latest = db.get_latest_task_run()
+        if not latest:
+            return {"task_name": None, "last_run": None}
+        last_run = latest.get("last_run")
+        if hasattr(last_run, "isoformat"):
+            last_run = last_run.isoformat()
+        return {
+            "task_name": latest.get("task_name"),
+            "last_run": last_run
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 # Initialize search module
 from news_search.search_module import NewsSearchModule
 from news_search.processor_worker import ProcessorWorker
@@ -147,7 +181,7 @@ class TaskExecutionRequest(BaseModel):
 @app.post("/api/tasks/execute")
 def execute_task(request: TaskExecutionRequest):
     try:
-        result = search_module.run_task(request.task_name)
+        result = _run_task_by_name(request.task_name)
         
         # If search found new links, ensure they are processed
         # The search_module.run_task already calls auto-process if configured,
@@ -163,6 +197,76 @@ def execute_task(request: TaskExecutionRequest):
              pass
              
         return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/tasks")
+def list_query_tasks():
+    try:
+        tasks = db.get_all_tasks()
+        return tasks
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/tasks")
+def create_query_task(request: QueryTaskCreateRequest):
+    if not request.task_name.strip():
+        raise HTTPException(status_code=400, detail="Task name is required.")
+    if not request.prompt_template.strip():
+        raise HTTPException(status_code=400, detail="Prompt template is required.")
+
+    try:
+        task_id = db.create_query_task(
+            task_name=request.task_name.strip(),
+            prompt_template=request.prompt_template.strip(),
+            schedule=request.schedule,
+            is_active=request.is_active if request.is_active is not None else True
+        )
+        return {"success": True, "task_id": task_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.put("/api/tasks/{task_name}")
+def update_query_task(task_name: str, request: QueryTaskUpdateRequest):
+    if not any([request.prompt_template is not None, request.schedule is not None, request.is_active is not None]):
+        raise HTTPException(status_code=400, detail="No update fields provided.")
+
+    try:
+        updated = db.update_query_task(
+            task_name,
+            prompt_template=(request.prompt_template.strip() if request.prompt_template is not None else None),
+            schedule=(request.schedule.strip() if request.schedule is not None else None),
+            is_active=request.is_active
+        )
+        if not updated:
+            raise HTTPException(status_code=404, detail="Task not found.")
+        return {"success": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/tasks/{task_name}")
+def delete_query_task(task_name: str):
+    try:
+        deleted = db.delete_query_task(task_name)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Task not found.")
+        return {"success": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/tasks/{task_name}/run")
+def run_query_task(task_name: str):
+    try:
+        return _run_task_by_name(task_name)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

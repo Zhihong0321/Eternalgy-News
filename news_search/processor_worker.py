@@ -19,7 +19,7 @@ class ProcessorWorker:
         Initialize processor worker
         
         Args:
-            ai_processor: Your AI processing module (scraper + translator)
+            ai_processor: Your AI processing module (Jina Reader + translator)
                          Should have a process(url) method that returns processed content
         """
         self.db = Database()
@@ -119,15 +119,24 @@ class ProcessorWorker:
             
             print(f"[{domain}] ({i}/{len(links)}) Processing: {link['url']}")
             
+            if self.db.is_domain_blacklisted(domain):
+                print(f"[{domain}] ⚠️ Domain is blacklisted, skipping link.")
+                self.db.update_link_status(link['id'], 'blocked', 'Domain blacklisted')
+                stats["skipped"] += 1
+                continue
+
             # Update status to processing
             self.db.update_link_status(link['id'], 'processing')
             
             # Process the link
-            success = self._process_single_link(link)
+            status = self._process_single_link(link)
             
-            if success:
+            if status == "success":
                 stats["success"] += 1
                 print(f"[{domain}] ✓ Success")
+            elif status == "blocked":
+                stats["skipped"] += 1
+                print(f"[{domain}] ⚠️ Blocked by Jina")
             else:
                 stats["failed"] += 1
                 print(f"[{domain}] ✗ Failed")
@@ -146,7 +155,7 @@ class ProcessorWorker:
         
         self.domain_last_request[domain] = time.time()
     
-    def _process_single_link(self, link: Dict) -> bool:
+    def _process_single_link(self, link: Dict) -> str:
         """
         Process a single link with retry logic
         
@@ -154,7 +163,7 @@ class ProcessorWorker:
             link: Link dictionary with id, url, etc.
         
         Returns:
-            True if successful, False otherwise
+            "success", "blocked", or "failed"
         """
         url = link['url']
         link_id = link['id']
@@ -162,17 +171,21 @@ class ProcessorWorker:
         for attempt in range(1, MAX_RETRIES + 1):
             try:
                 if self.ai_processor:
-                    # Use provided AI processor
-                    # Pass title if available
                     title = link.get('title', '')
                     result = self.ai_processor.process(url, title=title)
                     
                     if result:
+                        if result.get('blocked'):
+                            self._handle_blacklisted_link(link, result)
+                            return "blocked"
+
                         if result.get('success'):
-                            # Save processed content with all fields
                             self.db.save_processed_content(
                                 link_id=link_id,
                                 title=result.get('title'),
+                                title_en=result.get('title_en'),
+                                title_zh=result.get('title_zh'),
+                                title_ms=result.get('title_ms'),
                                 content=result.get('content'),
                                 translated_content=result.get('translated_content'),
                                 tags=result.get('tags'),
@@ -181,34 +194,42 @@ class ProcessorWorker:
                                 metadata=result.get('metadata')
                             )
                             
-                            # Update status to completed
                             self.db.update_link_status(link_id, 'completed')
-                            return True
+                            return "success"
                         else:
                             error_msg = result.get('error', 'Unknown error')
                             print(f"  Attempt {attempt}/{MAX_RETRIES}: Processing failed - {error_msg}")
                     else:
                         print(f"  Attempt {attempt}/{MAX_RETRIES}: Processing returned None")
                 else:
-                    # Mock processing for testing
                     print(f"  [Mock] Processing {url}")
-                    time.sleep(0.5)  # Simulate processing time
+                    time.sleep(0.5)
                     self.db.update_link_status(link_id, 'completed')
-                    return True
+                    return "success"
                     
             except Exception as e:
                 print(f"  Attempt {attempt}/{MAX_RETRIES}: Error - {str(e)}")
-                
-                if attempt == MAX_RETRIES:
-                    # Final attempt failed
-                    self.db.update_link_status(link_id, 'failed', str(e))
-                    return False
-                else:
-                    # Wait before retry
-                    time.sleep(2 ** attempt)  # Exponential backoff
         
-        return False
-    
+        self.db.update_link_status(link_id, 'failed', 'Max retries exceeded')
+        return "failed"
+
+    def _handle_blacklisted_link(self, link: Dict, result: Dict):
+        '''Record the blocked link/domain and update status.'''
+        url = link['url']
+        domain = extract_domain(url)
+        reason = result.get('block_reason') or result.get('metadata', {}).get('block_reason', 'Jina Reader blocked')
+        title = link.get('title') or self._title_from_url(url)
+        self.db.add_blacklisted_site(domain, url, title, reason)
+        self.db.update_link_status(link['id'], 'blocked', reason)
+
+    def _title_from_url(self, url: str) -> str:
+        '''Derive a simple title from the URL for logging.'''
+        from urllib.parse import urlparse, unquote
+        parsed = urlparse(url)
+        segments = [seg for seg in parsed.path.split('/') if seg]
+        candidate = segments[-1] if segments else parsed.netloc
+        candidate = candidate.replace('-', ' ').replace('_', ' ')
+        return unquote(candidate)
     def process_specific_links(self, link_ids: List[int]) -> Dict:
         """Process specific links by ID"""
         links = self.db.get_links_by_ids(link_ids)

@@ -10,6 +10,7 @@ class SearchClient:
         self.api_url = SEARCH_API_URL
         self.api_key = api_key or SEARCH_API_KEY
         self.model = model or SEARCH_MODEL
+        self.last_error: Optional[str] = None
     
     def search(self, prompt: str) -> Optional[List[str]]:
         """
@@ -67,6 +68,7 @@ class SearchClient:
                 }
             }
         
+        self.last_error = None
         try:
             response = requests.post(
                 self.api_url,
@@ -164,17 +166,17 @@ class SearchClient:
                         print(f"Extracted {len(results)} results from annotations (fallback)")
                         return results
                 
-                print(f"Could not extract URLs from response")
+                self.last_error = "Could not extract URLs from response"
                 return None
             else:
-                print(f"API Error {response.status_code}: {response.text}")
+                self.last_error = f"API Error {response.status_code}: {response.text}"
                 return None
-                
+               
         except requests.exceptions.Timeout:
-            print(f"Request timed out after {REQUEST_TIMEOUT} seconds")
+            self.last_error = f"Request timed out after {REQUEST_TIMEOUT} seconds"
             return None
         except Exception as e:
-            print(f"Search error: {str(e)}")
+            self.last_error = f"Search error: {str(e)}"
             return None
     
     def get_usage_stats(self, response_data: dict) -> dict:

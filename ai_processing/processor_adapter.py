@@ -57,23 +57,38 @@ class ProcessorAdapter:
             country = metadata.get('country', 'XX')
             news_date = metadata.get('news_date')
             
-            # Build translated_content JSON string with all 3 languages
+            # Build translated_content JSON string with summary translations (fallback to title translations)
             import json
-            translated_content_dict = {
-                "en": result.title_en or "",
-                "zh": result.title_zh or "",
-                "ms": result.title_ms or ""
-            }
+            summary_translations = metadata.get('summary_translations')
+
+            if summary_translations and isinstance(summary_translations, dict):
+                translated_content_dict = {
+                    "en": summary_translations.get('en', ''),
+                    "zh": summary_translations.get('zh', ''),
+                    "ms": summary_translations.get('ms', '')
+                }
+            else:
+                translated_content_dict = {
+                    "en": result.title_en or "",
+                    "zh": result.title_zh or "",
+                    "ms": result.title_ms or ""
+                }
+
             translated_content = json.dumps(translated_content_dict, ensure_ascii=False)
             
             return {
                 "success": True,
-                "title": result.title_cleaned or title,
+                "title": result.title_original or title,
                 "content": content,
                 "translated_content": translated_content,
+                "title_en": translated_content_dict.get("en", ""),
+                "title_zh": translated_content_dict.get("zh", ""),
+                "title_ms": translated_content_dict.get("ms", ""),
                 "tags": tags,
                 "country": country,
                 "news_date": news_date,
+                "blocked": metadata.get('blocked', False),
+                "block_reason": metadata.get('block_reason'),
                 "metadata": {
                     "detected_language": result.detected_language,
                     "translations": translated_content_dict,
@@ -81,7 +96,9 @@ class ProcessorAdapter:
                     "content_length": len(content),
                     "summary": metadata.get('summary', ''),
                     "bullets": metadata.get('bullets', ''),
-                    "full_content": metadata.get('content', '')
+                    "full_content": metadata.get('content', ''),
+                    "blocked": metadata.get('blocked', False),
+                    "block_reason": metadata.get('block_reason')
                 }
             }
             

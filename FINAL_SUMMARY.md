@@ -193,23 +193,21 @@ news = db.get_news_for_frontend(limit=20)
 ## 🔧 What Works Now
 
 ### ✅ Code Fixes (Completed)
-1. Content extraction from URLs (using readability-lxml)
-2. Translation JSON format (proper serialization)
-3. All fields mapped (tags, country, news_date)
-4. Frontend-ready data format method
-5. Fallback handling for blocked URLs
+1. Content extraction from URLs (via the Jina Reader API)
+2. News Rewriter prompt/service that rewrites Jina Markdown into BBcode summaries plus Chinese/Malay translations and tags
+3. Translation JSON format (proper serialization)
+4. All fields mapped (tags, country, news_date)
+5. Frontend-ready data format method
+6. Fallback handling for blocked URLs (metadata flags, domain skip logic)
+7. Domain blacklist table + processor checks to avoid retrying blocked domains
+6. Fallback handling for blocked URLs
 
 ### ✅ Test Results
 ```
-Processing Results:
-  Total: 3
-  Success: 3  ✅
-  Failed: 0
-
-Content Extraction:
-  Link ID: 1 - 3003 chars  ✅
-  Link ID: 2 - 3003 chars  ✅
-  Link ID: 3 - 0 chars (blocked URL)
+python3 test_extraction.py
+→ JinaReader request for https://apnews.com/article/4e7e5b1a7df946169c72c1df58f90295
+   Response: 451 Client Error: Unavailable For Legal Reasons
+   Extraction failed (Jina blocked the article)
 ```
 
 ---
@@ -242,6 +240,18 @@ Error cleaning batch: API request failed after 3 retries:
 **Current Handling**:
 - ✅ Fallback to using title only
 - ✅ Processing continues for other URLs
+
+### 3. Jina Reader Access (451 / Blocked)
+**Impact**:
+- The new News Rewriter consumes Jina Reader output, so the test link above fails with 451 before rewriting can happen.
+**Error**:
+
+```
+[JinaReader] Failed to read https://apnews.com/article/... : 451 Client Error: Unavailable For Legal Reasons
+```
+**Next Steps**:
+- Try another news source or use a proxy to bypass the restriction.
+- Log and skip blocked articles so the worker continues processing the rest.
 
 ---
 

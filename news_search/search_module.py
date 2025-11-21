@@ -30,9 +30,10 @@ class NewsSearchModule:
         urls = self.search_client.search(prompt)
         
         if urls is None:
+            error_reason = self.search_client.last_error or "unknown error"
             return {
                 "success": False,
-                "error": "Search failed",
+                "error": f"Search failed: {error_reason}",
                 "task_name": task_name
             }
         

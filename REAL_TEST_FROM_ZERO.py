@@ -5,7 +5,7 @@ Complete workflow test:
 0. Clean database
 1. Create query task
 2. Search for URLs (GPT-4o-mini)
-3. Process URLs (REAL HTTP scraping)
+3. Process URLs (Jina Reader + AI)
 4. Clean content (REAL AI)
 5. Translate (REAL AI to EN/ZH/MS)
 6. Verify in database
@@ -87,9 +87,9 @@ for item in result['urls'][:3]:
 print()
 
 # STEP 4: Process URLs with REAL AI
-print("STEP 4: Processing URLs (REAL HTTP + AI)...")
+print("STEP 4: Processing URLs (Jina Reader + AI)...")
 print("  This will:")
-print("  - HTTP scrape each URL")
+print("  - Fetch Markdown via the Jina Reader API")
 print("  - Extract content")
 print("  - Clean with AI")
 print("  - Translate to EN/ZH/MS")

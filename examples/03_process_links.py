@@ -2,7 +2,7 @@
 Example: Process News Links
 
 This script demonstrates how to process discovered news links:
-1. HTTP scrape content
+1. Fetch Markdown via the Jina Reader API
 2. Clean and summarize (point form)
 3. Translate to 3 languages
 4. Store in database

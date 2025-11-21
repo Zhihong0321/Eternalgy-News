@@ -28,7 +28,7 @@ Discovers news URLs using AI search.
 ```bash
 python 03_process_links.py
 ```
-Processes discovered links (scrape, clean, translate).
+Processes discovered links (fetch Markdown via Jina Reader, clean, translate).
 
 ### 5. Full Workflow
 ```bash

@@ -51,52 +51,78 @@ CREATE INDEX idx_news_links_source_task ON news_links(source_task);
 
 ### 2. processed_content
 
-Stores cleaned and translated article content.
+Stores cleaned and translated article content and localized headlines.
 
 ```sql
 CREATE TABLE processed_content (
     id SERIAL PRIMARY KEY,
     link_id INTEGER UNIQUE REFERENCES news_links(id) ON DELETE CASCADE,
     title TEXT,
+    title_en TEXT,
+    title_zh TEXT,
+    title_ms TEXT,
     content TEXT,
     translated_content TEXT,
+    tags TEXT[],
+    country VARCHAR(2),
+    news_date DATE,
     metadata JSONB,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX idx_processed_content_link_id ON processed_content(link_id);
+CREATE INDEX idx_processed_content_tags ON processed_content USING GIN(tags);
+CREATE INDEX idx_processed_content_country ON processed_content(country);
+CREATE INDEX idx_processed_content_news_date ON processed_content(news_date);
 ```
 
 **Fields**:
 - `id`: Unique identifier
-- `link_id`: Foreign key to news_links table
-- `title`: Cleaned article title
-- `content`: Point-form summarized content
-- `translated_content`: JSON with translations (EN, ZH, MS)
-- `metadata`: Additional data (JSONB format)
-- `created_at`: Record creation timestamp
-- `updated_at`: Last update timestamp
+- `link_id`: References `news_links`
+- `title`: Raw or fallback headline
+- `title_en`: Cleaned English headline for the UI
+- `title_zh`: Simplified Chinese headline
+- `title_ms`: Malay headline
+- `content`: Point-form summary (BBCode is preserved for now)
+- `translated_content`: JSON object with `en`, `zh`, and `ms` bullet summaries
+- `tags`: GIN-indexed arrays of relevant tags
+- `metadata`: Detection info, source domain, and other stats (JSONB)
+- `country`: Two-letter country code
+- `news_date`: Publication date
+- `created_at` / `updated_at`: Timestamps
+### 3. blacklisted_sites
 
-**Metadata Structure** (JSONB):
-```json
-{
-  "detected_language": "en",
-  "translations": {
-    "en": "English title",
-    "zh": "中文标题",
-    "ms": "Tajuk Melayu"
-  },
-  "source": "example.com",
-  "word_count": 500,
-  "extraction_method": "readability",
-  "processing_time": 2.5
-}
+Tracks domains that block the Jina Reader API so we stop retrying them.
+
+```sql
+CREATE TABLE blacklisted_sites (
+    id SERIAL PRIMARY KEY,
+    domain VARCHAR(255) UNIQUE NOT NULL,
+    url TEXT NOT NULL,
+    title TEXT,
+    reason TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_blacklisted_sites_domain ON blacklisted_sites(domain);
 ```
+
+**Fields**:
+- `id`: Unique identifier
+- `domain`: Lowercased domain name (e.g., `malaymail.com`)
+- `url`: Last blocked URL we attempted
+- `title`: Title derived from the news link (fetched from the original search hit)
+- `reason`: HTTP status and error message reported by Jina
+- `created_at`: When the domain was first blacklisted
+- `updated_at`: Last time we recorded another block
+
+This table is consulted during processing to skip any links from blocked domains.
 
 ---
 
-### 3. query_tasks
+### 4. query_tasks
 
 Manages reusable search query tasks.
 
@@ -267,3 +293,5 @@ CREATE INDEX idx_news_links_priority ON news_links(priority);
 -- Update existing records
 UPDATE news_links SET priority = 1 WHERE source_task = 'urgent_news';
 ```
+
+

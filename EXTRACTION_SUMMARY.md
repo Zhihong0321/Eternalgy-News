@@ -153,7 +153,7 @@ Eternalgy-News-AI/
 ```
 1. Query Task → GPT-4o-mini-web-search → News URLs ✅
 2. Save URLs → PostgreSQL (news_links) ✅
-3. AI Processor → HTTP scrape each URL ✅
+3. AI Processor → Fetch Markdown via Jina Reader API ✅
 4. GPT-5-nano → Clean content → Point form → JSON ✅
 5. GPT-5-nano → Translate (EN, ZH, MS) ✅
 6. Store → PostgreSQL (processed_content) ✅

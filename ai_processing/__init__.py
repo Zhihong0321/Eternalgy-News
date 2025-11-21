@@ -2,7 +2,7 @@
 AI Processing Module for TrendRadar
 
 This independent module processes news articles through:
-1. Content extraction from URLs (using readability)
+1. Content extraction from URLs (via the Jina Reader API)
 2. AI-powered cleaning/editing and summarization
 3. Multi-language translation (EN, ZH, MS)
 4. Language detection with smart skipping

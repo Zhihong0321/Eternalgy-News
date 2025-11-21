@@ -46,6 +46,7 @@ Edit `.env` and add your API keys:
 # Required: Add your API keys
 SEARCH_API_KEY=your-search-api-key-here
 AI_API_KEY=your-ai-api-key-here
+JINA_API_KEY=your-jina-api-key-here
 
 # Optional: Adjust if needed
 DB_HOST=localhost
@@ -88,7 +89,7 @@ python examples/04_full_workflow.py
 This will:
 1. Create a demo query task
 2. Search for news URLs using GPT-4o-mini
-3. Process discovered links (scrape, clean, translate)
+3. Process discovered links (fetch Markdown via Jina Reader, clean, translate)
 4. Display results
 
 Expected output:

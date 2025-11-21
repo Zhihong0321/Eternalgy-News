@@ -6,6 +6,7 @@ from datetime import datetime
 import hashlib
 from typing import Optional, List, Dict
 from .config import DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD
+from .url_normalizer import normalize_url, is_valid_url, extract_domain
 
 
 class Database:
@@ -63,6 +64,9 @@ class Database:
                     id SERIAL PRIMARY KEY,
                     link_id INTEGER UNIQUE REFERENCES news_links(id) ON DELETE CASCADE,
                     title TEXT,
+                    title_en TEXT,
+                    title_zh TEXT,
+                    title_ms TEXT,
                     content TEXT,
                     translated_content TEXT,
                     tags TEXT[],
@@ -77,6 +81,20 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_processed_content_tags ON processed_content USING GIN(tags);
                 CREATE INDEX IF NOT EXISTS idx_processed_content_country ON processed_content(country);
                 CREATE INDEX IF NOT EXISTS idx_processed_content_news_date ON processed_content(news_date);
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS blacklisted_sites (
+                    id SERIAL PRIMARY KEY,
+                    domain VARCHAR(255) UNIQUE NOT NULL,
+                    url TEXT NOT NULL,
+                    title TEXT,
+                    reason TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_blacklisted_sites_domain ON blacklisted_sites(domain);
             """)
             
             # Create query_tasks table
@@ -156,6 +174,36 @@ class Database:
             results = cursor.fetchall()
             cursor.close()
             return [dict(row) for row in results]
+
+    def is_domain_blacklisted(self, domain: str) -> bool:
+        """Check if a domain is blacklisted for Jina Reader failures"""
+        if not domain:
+            return False
+
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT 1 FROM blacklisted_sites WHERE domain = %s", (domain,))
+            exists = cursor.fetchone() is not None
+            cursor.close()
+            return exists
+
+    def add_blacklisted_site(self, domain: str, url: str, title: str, reason: str):
+        """Insert or update a blacklisted domain entry"""
+        if not domain:
+            domain = url
+
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO blacklisted_sites (domain, url, title, reason)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (domain) DO UPDATE
+                SET url = EXCLUDED.url,
+                    title = EXCLUDED.title,
+                    reason = EXCLUDED.reason,
+                    updated_at = CURRENT_TIMESTAMP
+            """, (domain, url, title, reason))
+            cursor.close()
     
     def get_links_by_ids(self, link_ids: List[int]) -> List[Dict]:
         """Get links by IDs"""
@@ -192,6 +240,7 @@ class Database:
             cursor.close()
     
     def save_processed_content(self, link_id: int, title: str = None, 
+                               title_en: str = None, title_zh: str = None, title_ms: str = None,
                                content: str = None, translated_content: str = None,
                                tags: list = None, country: str = None, news_date: str = None,
                                metadata: dict = None):
@@ -200,10 +249,13 @@ class Database:
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT INTO processed_content 
-                (link_id, title, content, translated_content, tags, country, news_date, metadata)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                (link_id, title, title_en, title_zh, title_ms, content, translated_content, tags, country, news_date, metadata)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (link_id) DO UPDATE
                 SET title = EXCLUDED.title,
+                    title_en = EXCLUDED.title_en,
+                    title_zh = EXCLUDED.title_zh,
+                    title_ms = EXCLUDED.title_ms,
                     content = EXCLUDED.content,
                     translated_content = EXCLUDED.translated_content,
                     tags = EXCLUDED.tags,
@@ -211,7 +263,19 @@ class Database:
                     news_date = EXCLUDED.news_date,
                     metadata = EXCLUDED.metadata,
                     updated_at = CURRENT_TIMESTAMP
-            """, (link_id, title, content, translated_content, tags, country, news_date, Json(metadata) if metadata else None))
+            """, (
+                link_id,
+                title,
+                title_en,
+                title_zh,
+                title_ms,
+                content,
+                translated_content,
+                tags,
+                country,
+                news_date,
+                Json(metadata) if metadata else None
+            ))
             cursor.close()
     
     def get_processed_content(self, link_id: int) -> Optional[Dict]:
@@ -225,15 +289,15 @@ class Database:
             cursor.close()
             return dict(result) if result else None
     
-    def create_query_task(self, task_name: str, prompt_template: str, schedule: str = None) -> int:
+    def create_query_task(self, task_name: str, prompt_template: str, schedule: str = None, is_active: bool = True) -> int:
         """Create a new query task"""
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                INSERT INTO query_tasks (task_name, prompt_template, schedule)
-                VALUES (%s, %s, %s)
+                INSERT INTO query_tasks (task_name, prompt_template, schedule, is_active)
+                VALUES (%s, %s, %s, %s)
                 RETURNING id
-            """, (task_name, prompt_template, schedule))
+            """, (task_name, prompt_template, schedule, is_active))
             task_id = cursor.fetchone()[0]
             cursor.close()
             return task_id
@@ -260,6 +324,80 @@ class Database:
             results = cursor.fetchall()
             cursor.close()
             return [dict(row) for row in results]
+
+    def get_all_tasks(self) -> List[Dict]:
+        """List all query tasks"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor.execute("""
+                SELECT * FROM query_tasks
+                ORDER BY task_name
+            """)
+            results = cursor.fetchall()
+            cursor.close()
+            return [dict(row) for row in results]
+
+    def update_query_task(self, task_name: str, prompt_template: Optional[str] = None,
+                          schedule: Optional[str] = None, is_active: Optional[bool] = None) -> bool:
+        """Update fields of an existing query task"""
+        updates = []
+        params = []
+
+        if prompt_template is not None:
+            updates.append("prompt_template = %s")
+            params.append(prompt_template)
+        if schedule is not None:
+            updates.append("schedule = %s")
+            params.append(schedule)
+        if is_active is not None:
+            updates.append("is_active = %s")
+            params.append(is_active)
+
+        if not updates:
+            return False
+
+        params.append(task_name)
+        query = f"""
+            UPDATE query_tasks
+            SET {', '.join(updates)}, updated_at = CURRENT_TIMESTAMP
+            WHERE task_name = %s
+            RETURNING id
+        """
+
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(query, tuple(params))
+            result = cursor.fetchone()
+            cursor.close()
+            return result is not None
+
+    def delete_query_task(self, task_name: str) -> bool:
+        """Delete a query task by name"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                DELETE FROM query_tasks
+                WHERE task_name = %s
+                RETURNING id
+            """, (task_name,))
+            result = cursor.fetchone()
+            cursor.close()
+            return result is not None
+
+    def get_latest_task_run(self) -> Optional[Dict]:
+        """Return the most recent query task run timestamp."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor.execute("""
+                SELECT task_name, last_run
+                FROM query_tasks
+                WHERE last_run IS NOT NULL
+                ORDER BY last_run DESC
+                LIMIT 1
+            """)
+            result = cursor.fetchone()
+            cursor.close()
+            return dict(result) if result else None
     
     def update_task_run_stats(self, task_name: str, links_found: int):
         """Update task statistics after a run"""
@@ -316,7 +454,8 @@ class Database:
             query = """
                 SELECT 
                     nl.id, nl.url, nl.discovered_at,
-                    pc.title, pc.content, pc.tags, pc.country, pc.news_date, pc.metadata,
+                    pc.title, pc.title_en, pc.title_zh, pc.title_ms,
+                    pc.content, pc.tags, pc.country, pc.news_date, pc.metadata,
                     pc.translated_content
                 FROM news_links nl
                 JOIN processed_content pc ON nl.id = pc.link_id
@@ -376,19 +515,31 @@ class Database:
             if item.get('metadata'):
                 detected_lang = item['metadata'].get('detected_language', 'unknown')
             
+            title_en_value = item.get('title_en') or translations.get('en', '')
+            title_zh_value = item.get('title_zh') or translations.get('zh', '')
+            title_ms_value = item.get('title_ms') or translations.get('ms', '')
+
+            metadata = item.get('metadata') or {}
+            summary_translations = metadata.get('translated_summary') or {
+                "en": translations.get('en', ''),
+                "zh": translations.get('zh', ''),
+                "ms": translations.get('ms', '')
+            }
+
             formatted_news.append({
                 "id": item['id'],
                 "url": item['url'],
                 "title": item.get('title', ''),
-                "title_en": translations.get('en', ''),
-                "title_zh": translations.get('zh', ''),
-                "title_ms": translations.get('ms', ''),
+                "title_en": title_en_value,
+                "title_zh": title_zh_value,
+                "title_ms": title_ms_value,
                 "content": item.get('content', ''),
                 "tags": item.get('tags', []),
                 "country": item.get('country', 'XX'),
                 "news_date": str(item['news_date']) if item.get('news_date') else None,
                 "detected_language": detected_lang,
-                "discovered_at": str(item['discovered_at']) if item.get('discovered_at') else None
+                "discovered_at": str(item['discovered_at']) if item.get('discovered_at') else None,
+                "summary_translations": summary_translations
             })
         
         return formatted_news

@@ -9,8 +9,9 @@ from .config import AIConfig
 from .models.article import RawArticle, ProcessedArticle
 from .services.ai_client import AIClient
 from .services.cleaner import ArticleCleaner
-from .services.content_extractor import ContentExtractor
-from .services.content_cleaner import ContentCleaner
+from .services.formatting import strip_bbcode
+from .services.jina_reader import JinaReader, JinaReaderConfig
+from .services.news_rewriter import NewsRewriter
 from .services.translator import ArticleTranslator
 from .services.language_detector import LanguageDetector
 
@@ -35,7 +36,9 @@ class ArticleProcessorWithContent:
         model: Optional[str] = None,
         config: Optional[AIConfig] = None,
         extract_content: bool = True,
-        max_content_length: int = 3000
+        max_content_length: int = 3000,
+        jina_reader_config: Optional[JinaReaderConfig] = None,
+        jina_api_key: Optional[str] = None
     ):
         """
         Initialize enhanced processor
@@ -78,17 +81,23 @@ class ArticleProcessorWithContent:
             batch_size=self.config.batch_size
         )
         
-        # Content extractor
-        self.content_extractor = ContentExtractor(
-            timeout=self.config.timeout,
-            max_content_length=max_content_length
-        )
+        # Jina Reader for fetching article copy
+        if jina_reader_config:
+            self.jina_reader_config = jina_reader_config
+        else:
+            self.jina_reader_config = JinaReaderConfig(
+                api_key=jina_api_key or "",
+                timeout=self.config.timeout,
+                max_content_length=max_content_length
+            )
+
+        self.jina_reader = JinaReader(config=self.jina_reader_config)
         
-        # Content cleaner (for full articles)
-        self.content_cleaner = ContentCleaner(
+        # News Rewriter (handles BBcode summary + translations)
+        self.news_rewriter = NewsRewriter(
             ai_client=self.ai_client,
-            batch_size=self.config.batch_size,
-            max_content_length=max_content_length
+            temperature=0.3,
+            max_tokens=1200
         )
         
         self.translator = ArticleTranslator(
@@ -147,6 +156,8 @@ class ArticleProcessorWithContent:
                 article['title_zh'] = summary
                 article['title_ms'] = summary
                 article['detected_language'] = 'unknown'
+
+        articles_dict = self._apply_rewriter_titles(articles_dict)
         
         # Step 4: Convert to ProcessedArticle objects
         print("Step 4/4: Finalizing...")
@@ -155,64 +166,162 @@ class ArticleProcessorWithContent:
         print(f"✓ Successfully processed {len(processed)} articles with content")
         return processed
     
+    def _get_domain(self, url: str) -> str:
+        """Extract domain from URL using urllib."""
+        from urllib.parse import urlparse
+        parsed = urlparse(url or "")
+        domain = parsed.netloc.lower().replace("www.", "")
+        return domain
+
     def _extract_content_batch(self, articles: List[dict]) -> List[dict]:
-        """Extract content from URLs for all articles"""
+        """Extract content from URLs for all articles using the Jina Reader."""
         for article in articles:
             url = article.get('url')
+            metadata = article.get('metadata') or {}
+            article['metadata'] = metadata
+
             if url:
-                print(f"  Extracting: {url[:60]}...")
-                extracted = self.content_extractor.extract_with_fallback(
-                    url,
-                    fallback_title=article['title']
-                )
-                
-                article['content'] = extracted.get('content', article['title'])
-                article['excerpt'] = extracted.get('excerpt', article['title'])
-                article['extracted_title'] = extracted.get('title', article['title'])
+                print(f"  Extracting via Jina Reader: {url[:60]}...")
+                extracted = self.jina_reader.read_url(url)
+
+                if extracted and extracted.get('content'):
+                    article['content'] = extracted.get('content')
+                    article['excerpt'] = extracted.get('excerpt')
+                    article['extracted_title'] = extracted.get('title', article['title'])
+                    article['source_description'] = extracted.get('description')
+                else:
+                    article['content'] = article.get('title', '')
+                    article['excerpt'] = article.get('title', '')
+                    metadata['blocked'] = extracted.get('blocked', False) if isinstance(extracted, dict) else False
+                    metadata['block_reason'] = extracted.get('error') if isinstance(extracted, dict) else "JinaReader failed"
+                    metadata['block_status'] = extracted.get('status_code') if isinstance(extracted, dict) else None
+                    metadata['block_domain'] = self._get_domain(url)
+                    metadata['original_url'] = url
             else:
-                # No URL, use title as content
-                article['content'] = article['title']
-                article['excerpt'] = article['title']
-        
+                article['content'] = article.get('title', '')
+                article['excerpt'] = article.get('title', '')
+
         return articles
     
     def _clean_content_batch(self, articles: List[dict]) -> List[dict]:
-        """Clean and summarize article content"""
-        # Prepare articles for content cleaning
-        articles_for_cleaning = []
+        """Rewrite article content via the Jina Reader + News Rewriter prompt."""
         for article in articles:
-            articles_for_cleaning.append({
-                'title': article['title'],
-                'content': article.get('content', article['title']),
-                'url': article.get('url')
+            original_content = article.get('content', '')
+            title = article.get('title', '')
+            url = article.get('url', '')
+            date_str = self._format_article_date(article)
+
+            if not original_content:
+                article['summary'] = title
+                article['translated_summary'] = {
+                    'en': title,
+                    'zh': title,
+                    'ms': title
+                }
+                article['tags'] = article.get('tags', [])
+                article['news_date'] = date_str or article.get('news_date')
+                continue
+
+            rewrite_result = self.news_rewriter.rewrite(
+                title=title,
+                date=date_str or "N/A",
+                url=url,
+                content=original_content
+            )
+
+            english_summary = rewrite_result.get('news content (en)', original_content)
+            chinese_summary = rewrite_result.get('news content (zh-cn)', '')
+            malay_summary = rewrite_result.get('news content (my)', '')
+            tags = rewrite_result.get('tags (pick 3)', [])
+            news_date = rewrite_result.get('news date') or date_str
+
+            article['summary'] = english_summary
+            article['content'] = english_summary
+            article['summary_plain'] = strip_bbcode(english_summary)
+            article['translated_summary'] = {
+                'en': english_summary,
+                'zh': chinese_summary or english_summary,
+                'ms': malay_summary or english_summary
+            }
+            article['tags'] = tags
+            article['news_date'] = news_date
+            rewriter_titles = {
+                'en': rewrite_result.get('title_en'),
+                'zh': rewrite_result.get('title_zh'),
+                'ms': rewrite_result.get('title_ms')
+            }
+            english_title = rewriter_titles['en'] or strip_bbcode(english_summary)
+            chinese_title = rewriter_titles['zh'] or strip_bbcode(chinese_summary or english_summary)
+            malay_title = rewriter_titles['ms'] or strip_bbcode(malay_summary or english_summary)
+            article['title_en'] = english_title
+            article['title_zh'] = chinese_title
+            article['title_ms'] = malay_title
+            article['rewriter_titles'] = {
+                'en': english_title,
+                'zh': chinese_title,
+                'ms': malay_title
+            }
+            metadata_existing = article.get('metadata', {})
+            metadata_existing.update({
+                'translated_summary': article['translated_summary'],
+                'summary': english_summary,
+                'summary_plain': article.get('summary_plain', strip_bbcode(english_summary)),
+                'excerpt': article.get('excerpt', ''),
+                'tags': tags,
+                'country': article.get('country', metadata_existing.get('country', 'XX')),
+                'news_date': news_date,
+                'rewriter_titles': article['rewriter_titles']
             })
-        
-        # Clean in batches
-        cleaned = self.content_cleaner.clean_articles_with_content(
-            articles_for_cleaning,
-            extract_content=False  # Already extracted
-        )
-        
-        # Merge cleaned data back
-        for article, cleaned_data in zip(articles, cleaned):
-            article['title_cleaned'] = cleaned_data.get('title', article['title'])
-            article['summary'] = cleaned_data.get('summary', article['title'])
-            article['tags'] = cleaned_data.get('tags', [])
-            article['country'] = cleaned_data.get('country', 'XX')
-            article['news_date'] = cleaned_data.get('news_date', None)
-        
+            article['metadata'] = metadata_existing
+
         return articles
     
     def _translate_summaries(self, articles: List[dict]) -> List[dict]:
         """Translate article summaries to 3 languages"""
-        # Use summary as the text to translate
+        original_titles = []
+
+        # Use summary as the text to translate, but preserve original title
         for article in articles:
-            article['title'] = article.get('summary', article['title'])
-        
+            original_titles.append(article.get('title', ''))
+            article['title'] = article.get('summary', article.get('title', ''))
+
         # Use existing translator
         translated = self.translator.translate_articles(articles)
-        
+
+        # Restore original title so downstream logic sees the real headline
+        for article, original in zip(translated, original_titles):
+            article['title'] = original
+
         return translated
+
+    def _apply_rewriter_titles(self, articles: List[dict]) -> List[dict]:
+        """Ensure any titles provided by the News Rewriter take precedence."""
+        for article in articles:
+            rewriter_titles = article.get('rewriter_titles')
+            if not rewriter_titles:
+                continue
+
+            en_title = rewriter_titles.get('en')
+            if en_title:
+                article['title_en'] = en_title
+                article['title_cleaned'] = en_title
+            zh_title = rewriter_titles.get('zh')
+            if zh_title:
+                article['title_zh'] = zh_title
+            ms_title = rewriter_titles.get('ms')
+            if ms_title:
+                article['title_ms'] = ms_title
+
+        return articles
+
+    def _format_article_date(self, article: dict) -> str:
+        """Return ISO date string from article timestamp if available."""
+        timestamp = article.get('timestamp')
+        if hasattr(timestamp, "isoformat"):
+            return timestamp.isoformat()
+        if isinstance(timestamp, str):
+            return timestamp
+        return ""
     
     def process_single(self, raw_article: RawArticle) -> ProcessedArticle:
         """Process a single article"""
@@ -253,7 +362,8 @@ class ArticleProcessorWithContent:
                 'extracted_title': article_dict.get('extracted_title', ''),
                 'tags': article_dict.get('tags', []),
                 'country': article_dict.get('country', 'XX'),
-                'news_date': article_dict.get('news_date', None)
+                'news_date': article_dict.get('news_date', None),
+                'summary_translations': article_dict.get('translated_summary', {})
             }
         )
     

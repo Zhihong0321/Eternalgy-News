@@ -157,78 +157,19 @@ Stores discovered news URLs with deduplication.
 ```
 
 ### processed_content
-Stores cleaned and translated articles.
+Stores cleaned, translated, and localized headlines.
 
 ```sql
 - id (serial)
-- link_id (integer) - foreign key to news_links
-- title (text)
-- content (text) - point-form summary
-- translated_content (text) - JSON with EN/ZH/MS
-- tags (text[])
-- country (varchar)
-- news_date (date)
-- metadata (jsonb)
+- link_id (integer) - foreign key to `news_links`
+- title (text) - fallback/raw headline
+- title_en (text) - cleaned English headline used for the UI
+- title_zh (text) - Simplified Chinese headline
+- title_ms (text) - Malay headline
+- content (text) - point-form summary (BBCode preserved here)
+- translated_content (text) - JSON blob with EN/ZH/MS bullet summaries
+- metadata (jsonb) - detected language, source, timestamps, etc.
 ```
-
-### query_tasks
-Manages reusable search queries.
-
-```sql
-- id (serial)
-- task_name (varchar)
-- prompt_template (text)
-- is_active (boolean)
-- last_run (timestamp)
-```
-
-## 🌐 Frontend Integration
-
-The system outputs structured JSON ready for any frontend framework:
-
-```json
-{
-  "id": 123,
-  "title": "Original title",
-  "title_en": "English title",
-  "title_zh": "中文标题",
-  "title_ms": "Tajuk Melayu",
-  "content": "• Point 1\n• Point 2\n• Point 3",
-  "tags": ["Solar", "Tech"],
-  "country": "MY",
-  "news_date": "2025-11-18",
-  "detected_language": "en",
-  "url": "https://example.com/article"
-}
-```
-
-### API Endpoints
-
-- `GET /api/news` - Get list of news articles
-- `GET /api/news/{id}` - Get single article details
-- `GET /api/tags` - Get available tags
-- `POST /api/tasks/execute` - Execute a search task
-
-## 🔄 Workflow
-
-```
-Query Task → GPT-4o-mini Search → News URLs
-    ↓
-PostgreSQL (news_links table)
-    ↓ [Deduplication]
-AI Processor → HTTP Scrape → Extract Content
-    ↓
-GPT-5-nano → Clean & Summarize (Point Form)
-    ↓
-GPT-5-nano → Translate (EN, ZH, MS)
-    ↓
-PostgreSQL (processed_content table)
-    ↓
-Frontend UI (FastAPI + HTML)
-```
-
-## 🛠️ Configuration
-
 ### Environment Variables
 
 See `.env.example` for all configuration options:
@@ -328,3 +269,4 @@ For support, please contact:
 **Status**: Production Ready
 
 **Built with ❤️ for renewable energy news aggregation**
+

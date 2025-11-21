@@ -29,17 +29,11 @@
     <div class="flex-1 flex flex-col pb-4 px-4 pt-6 gap-4">
       <!-- Top bar -->
       <header class="flex items-center justify-between">
-        <div class="flex items-center gap-2">
-          <div
-            class="h-8 w-8 rounded-full bg-slate-900 flex items-center justify-center text-xs font-semibold tracking-tight text-slate-50">
-            N
-          </div>
-          <div class="flex flex-col leading-tight">
-            <span class="text-base font-semibold tracking-tight">
-              Newsly
-            </span>
-            <span class="text-sm text-slate-500"> Curated in real-time </span>
-          </div>
+        <div>
+          <span class="text-base font-semibold tracking-tight">
+            Eternalgy News
+          </span>
+          <span class="text-sm text-slate-500"> Curated in real-time </span>
         </div>
 
         <div class="flex items-center gap-2">
@@ -64,32 +58,32 @@
         </div>
       </header>
 
+      <div id="last-refresh" class="text-[0.65rem] text-slate-500">
+        Last refresh: loading...
+      </div>
+
       <!-- Category pills -->
       <section class="-mx-4">
-        <div id="tags-container" class="flex items-center gap-2 overflow-x-auto no-scrollbar px-4">
-          <button onclick="filterByTag(null)"
-            class="shrink-0 rounded-full bg-slate-900 text-slate-50 text-sm font-medium tracking-tight px-3 py-1.5">
-            All
-          </button>
-          <!-- Tags will be injected here -->
-        </div>
+        <div id="tags-container" class="flex items-center gap-2 overflow-x-auto no-scrollbar px-4"></div>
       </section>
 
       <!-- Main Content -->
       <main class="flex-1 flex flex-col gap-4">
-        <!-- Hero story container -->
-        <section id="hero-container" class="space-y-3 hidden">
-          <!-- Hero story will be injected here -->
+        <section class="px-1">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-[0.65rem] uppercase tracking-[0.28em] text-slate-400">
+                Threads
+              </p>
+              <p class="text-xs text-slate-500">
+                Each thread covers a single article in bullet form.
+              </p>
+            </div>
+            <span class="text-xs text-emerald-500 font-semibold tracking-[0.4em]">
+              LIVE
+            </span>
+          </div>
         </section>
-
-        <!-- Divider -->
-        <div class="flex items-center gap-2">
-          <span class="h-px flex-1 bg-slate-200"></span>
-          <span class="text-[0.65rem] uppercase tracking-[0.18em] text-slate-400">
-            Latest Headlines
-          </span>
-          <span class="h-px flex-1 bg-slate-200"></span>
-        </div>
 
         <!-- Headlines list -->
         <section id="news-list" class="space-y-2.5">
@@ -100,24 +94,23 @@
 
       <!-- Bottom bar -->
       <nav
-        class="mt-2 rounded-2xl border border-slate-200 bg-white/80 backdrop-blur flex items-center justify-between px-6 py-2.5">
+        class="mt-4 rounded-2xl border border-slate-200 bg-white/80 backdrop-blur flex items-center justify-between px-6 py-2.5">
         <button class="flex flex-col items-center gap-0.5 text-xs text-slate-900" onclick="window.location.reload()">
           <i data-lucide="home" class="w-5 h-5" style="stroke-width: 1.5"></i>
           <span class="text-[0.7rem] font-medium tracking-tight">
             Home
           </span>
         </button>
-        <button class="flex flex-col items-center gap-0.5 text-xs text-slate-500">
-          <i data-lucide="globe" class="w-5 h-5" style="stroke-width: 1.5"></i>
-          <span class="text-[0.7rem]">Topics</span>
+        <button id="language-bubble"
+          class="px-4 py-1 rounded-full border border-slate-900 bg-slate-900 text-xs font-semibold tracking-tight text-white transition hover:bg-slate-700"
+          onclick="cycleLanguage()">
+          EN
         </button>
-        <button class="flex flex-col items-center gap-0.5 text-xs text-slate-500">
-          <i data-lucide="bookmark" class="w-5 h-5" style="stroke-width: 1.5"></i>
-          <span class="text-[0.7rem]">Saved</span>
-        </button>
-        <button class="flex flex-col items-center gap-0.5 text-xs text-slate-500">
-          <i data-lucide="user" class="w-5 h-5" style="stroke-width: 1.5"></i>
-          <span class="text-[0.7rem]">Profile</span>
+        <button class="flex flex-col items-center gap-0.5 text-xs text-slate-900" onclick="window.location.href='/query-manage/'">
+          <i data-lucide="command" class="w-5 h-5" style="stroke-width: 1.5"></i>
+          <span class="text-[0.7rem] font-medium tracking-tight">
+            Queries
+          </span>
         </button>
       </nav>
     </div>
@@ -178,7 +171,11 @@
     </div>
 
     <script>
-      let currentTag = null;
+      let currentTag = "all";
+      const languageLabels = { en: "EN", zh: "中文", ms: "MY" };
+      const languageOrder = ["en", "zh", "ms"];
+      let currentLanguage = "en";
+      let cachedNews = [];
 
       // Format relative time
       function timeAgo(dateString) {
@@ -202,6 +199,81 @@
         if (interval > 1) return Math.floor(interval) + " min ago";
 
         return "Just now";
+      }
+
+      function escapeHtml(value) {
+        return (value || "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
+
+      function sanitizeText(value) {
+        if (!value) return "";
+        return value
+          .replace(/\r/g, "\n")
+          .replace(/\[\/?(?:b|u|i)\]/gi, "")
+          .replace(/\[\/?color[^\]]*\]/gi, "")
+          .replace(/---/g, "")
+          .replace(/\[\/?(?:Point|point)[^\]]*\]/gi, "")
+          .replace(/\[[^\]]+\]/g, "")
+          .trim();
+      }
+
+      function getBulletLines(raw) {
+        const cleaned = sanitizeText(raw);
+        if (!cleaned) return [];
+        return cleaned
+          .split(/\n+/)
+          .map((line) => line.replace(/^[\*\-•\s]+/, "").trim())
+          .filter(Boolean);
+      }
+
+      function setLanguage(lang) {
+        if (currentLanguage === lang) return;
+        currentLanguage = lang;
+        renderLanguageSwitcher();
+        if (cachedNews.length) {
+          renderNewsList(cachedNews);
+        }
+      }
+
+      function renderLanguageSwitcher() {
+        const button = document.getElementById("language-bubble");
+        if (!button) return;
+        button.textContent = languageLabels[currentLanguage] || currentLanguage.toUpperCase();
+      }
+
+      function cycleLanguage() {
+        const currentIndex = languageOrder.indexOf(currentLanguage);
+        const nextIndex = (currentIndex + 1) % languageOrder.length;
+        setLanguage(languageOrder[nextIndex]);
+      }
+
+      function getLocalizedTitle(item) {
+        const field = item[`title_${currentLanguage}`] || item.title || "";
+        return sanitizeText(field) || "Untitled";
+      }
+
+      function getLocalizedSummary(item) {
+        const translations = item.summary_translations || {};
+        return translations[currentLanguage] || item.content || "";
+      }
+
+      function renderNewsList(newsItems) {
+        const listContainer = document.getElementById("news-list");
+        if (!listContainer) return;
+
+        if (newsItems.length === 0) {
+          listContainer.innerHTML =
+            '<div class="text-center py-10 text-slate-500">No news found.</div>';
+          return;
+        }
+
+          listContainer.innerHTML = newsItems.map(createNewsItem).join("");
+        lucide.createIcons();
       }
 
       // Modal functions
@@ -278,32 +350,44 @@
           const response = await fetch('/api/tags');
           const tags = await response.json();
           const container = document.getElementById('tags-container');
-
-          tags.forEach(tag => {
-            const btn = document.createElement('button');
-            btn.className = "shrink-0 rounded-full border border-slate-200 text-slate-700 text-sm px-3 py-1.5 bg-white hover:bg-slate-50 transition-colors";
-            btn.textContent = tag;
-            btn.onclick = () => filterByTag(tag);
-            container.appendChild(btn);
-          });
+          renderTags(['All', ...(tags || [])], container);
         } catch (error) {
           console.error('Error loading tags:', error);
         }
       }
 
+      function renderTags(tagList, container) {
+        if (!container) return;
+        container.innerHTML = '';
+
+          tagList.forEach(tag => {
+            const btn = document.createElement('button');
+            const value = tag === 'All' ? "all" : tag;
+            btn.dataset.tag = value;
+            btn.textContent = tag;
+            btn.className = getTagButtonClass(value === currentTag);
+            btn.onclick = () => filterByTag(tag === 'All' ? null : value);
+          container.appendChild(btn);
+        });
+      }
+
+      function getTagButtonClass(active) {
+        return active
+          ? "shrink-0 rounded-full px-3 py-1.5 text-sm font-semibold tracking-tight text-slate-50 bg-slate-900 border border-slate-900 transition-colors"
+          : "shrink-0 rounded-full px-3 py-1.5 text-sm font-semibold tracking-tight text-slate-200 border border-slate-700/50 bg-white/5 hover:bg-slate-700/60 transition-colors";
+      }
+
       // Filter news by tag
       function filterByTag(tag) {
-        currentTag = tag;
+        currentTag = tag || "all";
 
-        // Update UI
-        const buttons = document.getElementById('tags-container').querySelectorAll('button');
-        buttons.forEach(btn => {
-          if ((tag === null && btn.textContent === 'All') || btn.textContent === tag) {
-            btn.className = "shrink-0 rounded-full bg-slate-900 text-slate-50 text-sm font-medium tracking-tight px-3 py-1.5";
-          } else {
-            btn.className = "shrink-0 rounded-full border border-slate-200 text-slate-700 text-sm px-3 py-1.5 bg-white hover:bg-slate-50 transition-colors";
-          }
-        });
+        const container = document.getElementById('tags-container');
+        if (container) {
+          container.querySelectorAll('button').forEach(btn => {
+            const btnTag = btn.dataset.tag || null;
+            btn.className = getTagButtonClass(btnTag === currentTag);
+          });
+        }
 
         loadNews();
       }
@@ -311,98 +395,53 @@
       // Render a single news item
       function createNewsItem(item) {
         const time = timeAgo(item.discovered_at);
-        const domain = item.source || 'Unknown';
-        const tag = item.tags && item.tags.length > 0 ? item.tags[0] : 'News';
+        const domain = item.source || "Unknown";
+        const tag = item.tags && item.tags.length > 0 ? item.tags[0] : "News";
+        const displayTitle = item.title || getLocalizedTitle(item);
+        const safeTitle = escapeHtml(displayTitle);
+        const safeDomain = escapeHtml(domain);
+        const safeTag = escapeHtml(tag);
+        const safeUrl = escapeHtml(item.url || "#");
+        const summaryText = getLocalizedSummary(item);
+        const points = getBulletLines(summaryText);
+        const bulletMarkup = points.length
+          ? `<ul class="mt-3 list-disc list-inside space-y-2 text-sm text-slate-700">${points
+              .map((point) => `<li>${escapeHtml(point)}</li>`)
+              .join("")}</ul>`
+          : `<p class="mt-3 text-sm text-slate-500">${escapeHtml(
+              sanitizeText(summaryText || "Content not available.")
+            )}</p>`;
 
-        // Pass ID to expandArticle
         return `
-            <article class="flex gap-3 py-2 border-b border-slate-200 last:border-none hover:bg-slate-50/50 transition-colors rounded-lg px-2 -mx-2 cursor-pointer" onclick="expandArticle(${item.id})">
-              <div class="flex-1 flex flex-col gap-1">
-                <div class="flex items-center gap-1.5 text-xs text-slate-500">
-                  <span class="uppercase tracking-[0.18em] text-emerald-600 font-medium">${tag}</span>
-                  <span class="h-3 w-px bg-slate-200"></span>
-                  <span>${time}</span>
-                </div>
-                <h2 class="text-sm font-medium tracking-tight leading-snug text-slate-900">
-                  ${item.title}
-                </h2>
-                <p class="text-sm text-slate-600 line-clamp-2">
-                  ${item.content ? item.content.substring(0, 100) + '...' : ''}
-                </p>
-                <div class="flex items-center gap-1 text-xs text-slate-500 mt-1">
-                  <img src="https://www.google.com/s2/favicons?domain=${item.url}&sz=16" class="w-3 h-3 opacity-70" onerror="this.style.display='none'"/>
-                  <span>${domain}</span>
-                </div>
+          <article class="border border-slate-200 bg-white/90 rounded-2xl shadow-sm transition hover:shadow-md">
+            <div class="px-4 py-4">
+              <div class="flex items-center gap-2 text-[0.65rem] uppercase tracking-[0.32em] text-emerald-600 font-semibold">
+                <span>${safeTag}</span>
               </div>
-            </article>
-          `;
-      }
-
-      // Render hero item
-      function renderHero(item) {
-        const container = document.getElementById('hero-container');
-        if (!item) {
-          container.classList.add('hidden');
-          return;
-        }
-
-        const time = timeAgo(item.discovered_at);
-        const domain = item.source || 'Unknown';
-        const tag = item.tags && item.tags.length > 0 ? item.tags[0] : 'Top Story';
-
-        container.innerHTML = `
-            <div class="flex items-center justify-between">
-              <p class="text-xs text-slate-500 uppercase tracking-[0.18em]">
-                Top Story
+              <p class="mt-1 text-base font-semibold text-slate-900 leading-snug">
+                ${safeTitle}
               </p>
-              <span class="text-xs text-slate-400">${time}</span>
-            </div>
-
-            <article class="rounded-2xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 overflow-hidden cursor-pointer hover:shadow-sm transition-shadow" onclick="expandArticle(${item.id})">
-              <div class="p-3 flex gap-3">
-                <div class="flex-1 flex flex-col gap-1.5">
-                  <div class="flex items-center gap-1.5 text-xs text-slate-500">
-                    <span class="uppercase tracking-[0.18em] text-emerald-600 font-medium">${tag}</span>
-                    <span class="h-4 w-px bg-slate-200"></span>
-                    <span>3 min read</span>
-                  </div>
-                  <h1 class="text-lg font-semibold tracking-tight leading-snug text-slate-900">
-                    ${item.title}
-                  </h1>
-                  <p class="text-sm text-slate-600 leading-snug line-clamp-3">
-                    ${item.content ? item.content.substring(0, 150) + '...' : ''}
-                  </p>
-                  <div class="flex items-center justify-between pt-1.5">
-                    <div class="flex items-center gap-2">
-                      <div class="h-6 w-6 rounded-full bg-slate-900 flex items-center justify-center text-[0.625rem] font-medium text-white">
-                        ${domain.substring(0, 2).toUpperCase()}
-                      </div>
-                      <div class="flex flex-col leading-tight">
-                        <span class="text-xs text-slate-900">
-                          ${domain}
-                        </span>
-                      </div>
-                    </div>
-                    <button class="inline-flex items-center gap-1 rounded-full bg-slate-900 text-slate-50 text-xs font-medium px-2.5 py-1">
-                      <span>Read</span>
-                      <i data-lucide="arrow-right" class="w-3 h-3" style="stroke-width:1.5"></i>
-                    </button>
-                  </div>
-                </div>
+              ${bulletMarkup}
+              <div class="mt-4 flex items-center justify-between text-xs text-slate-400 uppercase tracking-[0.3em]">
+                <span>${safeDomain}</span>
+                <a href="${safeUrl}" target="_blank" rel="noreferrer" class="font-semibold text-emerald-600">
+                  Read
+                </a>
               </div>
-            </article>
-          `;
-        container.classList.remove('hidden');
+            </div>
+          </article>
+        `;
       }
 
       // Fetch and render news
       async function loadNews() {
-        const listContainer = document.getElementById('news-list');
-        listContainer.innerHTML = '<div class="text-center py-10 text-slate-500"><i data-lucide="loader-2" class="w-6 h-6 animate-spin mx-auto mb-2"></i>Loading...</div>';
+        const listContainer = document.getElementById("news-list");
+        listContainer.innerHTML =
+          '<div class="text-center py-10 text-slate-500"><i data-lucide="loader-2" class="w-6 h-6 animate-spin mx-auto mb-2"></i>Loading...</div>';
         lucide.createIcons();
 
         try {
-          let url = '/api/news?limit=20';
+          let url = "/api/news?limit=20";
           if (currentTag) {
             url += `&tag=${encodeURIComponent(currentTag)}`;
           }
@@ -410,30 +449,12 @@
           const response = await fetch(url);
           const news = await response.json();
 
-          if (news.length === 0) {
-            listContainer.innerHTML = '<div class="text-center py-10 text-slate-500">No news found.</div>';
-            document.getElementById('hero-container').classList.add('hidden');
-            return;
-          }
-
-          // Render hero (first item) only if no tag filter or if it's the first page
-          // For simplicity, always make the first item the hero
-          renderHero(news[0]);
-
-          // Render list (rest of items)
-          const listItems = news.slice(1);
-          if (listItems.length > 0) {
-            listContainer.innerHTML = listItems.map(createNewsItem).join('');
-          } else {
-            listContainer.innerHTML = '';
-          }
-
-          // Re-initialize icons
-          lucide.createIcons();
-
+          cachedNews = news;
+          renderNewsList(news);
         } catch (error) {
-          console.error('Error loading news:', error);
-          listContainer.innerHTML = '<div class="text-center py-10 text-red-500">Failed to load news.</div>';
+          console.error("Error loading news:", error);
+          listContainer.innerHTML =
+            '<div class="text-center py-10 text-red-500">Failed to load news.</div>';
         }
       }
 
@@ -502,9 +523,38 @@
         }
 
         // Initial load
+        renderLanguageSwitcher();
         loadTags();
         loadNews();
+        loadStatus();
       });
+
+      async function loadStatus() {
+        const el = document.getElementById("last-refresh");
+        if (!el) return;
+
+        try {
+          const response = await fetch("/api/status");
+          if (!response.ok) throw new Error("Failed to fetch status");
+          const data = await response.json();
+          if (data.last_run) {
+            const date = new Date(data.last_run);
+            el.textContent = `Last refresh: ${date.toLocaleString(undefined, {
+              hour: "2-digit",
+              minute: "2-digit",
+              second: "2-digit",
+              day: "2-digit",
+              month: "short",
+              year: "numeric"
+            })}`;
+          } else {
+            el.textContent = "Last refresh: not available";
+          }
+        } catch (error) {
+          console.error("Error fetching status:", error);
+          el.textContent = "Last refresh: unavailable";
+        }
+      }
     </script>
   </div>
 </body>

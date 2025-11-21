@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Query Manager • Eternalgy News</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js" defer></script>
+</head>
+
+<body class="min-h-screen bg-slate-950 text-slate-50">
+  <div class="min-h-screen max-w-5xl mx-auto px-4 py-8">
+    <header class="flex flex-col gap-3 mb-6">
+      <div class="flex items-center justify-between">
+        <div>
+          <p class="text-sm uppercase tracking-[0.4em] text-emerald-300 font-semibold">Query Manager</p>
+          <h1 class="text-3xl font-semibold tracking-tight">Search tasks control panel</h1>
+        </div>
+        <a href="/" class="px-4 py-2 rounded-full border border-slate-600 text-sm hover:bg-slate-800 transition">
+          Back to feed
+        </a>
+      </div>
+      <p class="text-sm text-slate-400 max-w-3xl">
+        Create, edit, remove, and trigger news search queries directly from the interface.
+        Every change is instantly reflected in the automation pipeline.
+      </p>
+    </header>
+
+    <section class="bg-slate-900/60 border border-slate-800 rounded-3xl p-6 shadow-2xl mb-6">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-xl font-semibold">Create a new query task</h2>
+      </div>
+      <form id="create-task-form" class="space-y-4">
+        <div class="flex flex-col gap-1">
+          <label class="text-sm text-slate-400" for="new-task-name">Task name</label>
+          <input id="new-task-name" name="task_name" required maxlength="60"
+            class="bg-slate-950/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm focus:ring-2 focus:ring-emerald-400 outline-none" />
+        </div>
+        <div class="flex flex-col gap-1">
+          <label class="text-sm text-slate-400" for="new-task-prompt">Prompt template</label>
+          <textarea id="new-task-prompt" name="prompt_template" rows="4" required
+            class="resize-none bg-slate-950/60 border border-slate-800 rounded-2xl px-4 py-3 text-sm focus:ring-2 focus:ring-emerald-400 outline-none"></textarea>
+        </div>
+        <div class="flex gap-4 flex-wrap">
+          <div class="flex-1 min-w-[180px]">
+            <label class="text-sm text-slate-400 block mb-1" for="new-task-schedule">Schedule (optional)</label>
+            <input id="new-task-schedule" name="schedule" placeholder="e.g. hourly" maxlength="64"
+              class="w-full bg-slate-950/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm focus:ring-2 focus:ring-emerald-400 outline-none" />
+          </div>
+          <label class="flex items-center gap-2 text-sm text-slate-300">
+            <input id="new-task-active" type="checkbox" checked class="w-4 h-4 accent-emerald-500" />
+            Active
+          </label>
+        </div>
+        <div class="flex justify-end">
+          <button type="submit"
+            class="px-5 py-2.5 rounded-2xl bg-emerald-500 text-slate-900 font-semibold text-sm transition hover:bg-emerald-400">
+            Save task
+          </button>
+        </div>
+      </form>
+    </section>
+
+    <section class="space-y-4">
+      <div class="flex items-center justify-between">
+        <div>
+          <p class="text-xs uppercase tracking-[0.4em] text-emerald-300">Tasks</p>
+          <h2 class="text-2xl font-semibold">Existing query templates</h2>
+        </div>
+        <div id="fetch-state" class="text-sm text-slate-400">
+          Loading...
+        </div>
+      </div>
+      <div id="tasks-list" class="space-y-4">
+        <p class="rounded-2xl border border-dashed border-slate-800 p-6 text-center text-sm text-slate-500">
+          Loading tasks…
+        </p>
+      </div>
+    </section>
+
+    <section id="editor-panel" class="hidden mt-8 bg-slate-900/60 border border-slate-800 rounded-3xl p-6 shadow-2xl">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-xl font-semibold">Edit task</h2>
+        <button id="close-editor" type="button"
+          class="text-sm text-slate-400 hover:text-slate-200 transition flex items-center gap-1">
+          <i data-lucide="x" class="w-4 h-4"></i>
+          Close
+        </button>
+      </div>
+      <form id="update-task-form" class="space-y-4">
+        <div>
+          <p class="text-sm text-slate-400">Task name</p>
+          <p id="edit-task-name" class="text-lg font-semibold tracking-tight text-emerald-300"></p>
+        </div>
+        <div class="flex flex-col gap-1">
+          <label class="text-sm text-slate-400" for="edit-task-prompt">Prompt template</label>
+          <textarea id="edit-task-prompt" rows="4"
+            class="resize-none bg-slate-950/60 border border-slate-800 rounded-2xl px-4 py-3 text-sm focus:ring-2 focus:ring-emerald-400 outline-none"></textarea>
+        </div>
+        <div class="flex gap-4 flex-wrap">
+          <div class="flex-1 min-w-[180px]">
+            <label class="text-sm text-slate-400 block mb-1" for="edit-task-schedule">Schedule</label>
+            <input id="edit-task-schedule" maxlength="64"
+              class="w-full bg-slate-950/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm focus:ring-2 focus:ring-emerald-400 outline-none" />
+          </div>
+          <label class="flex items-center gap-2 text-sm text-slate-300">
+            <input id="edit-task-active" type="checkbox" class="w-4 h-4 accent-emerald-500" />
+            Active
+          </label>
+        </div>
+        <div class="flex gap-3 flex-wrap justify-end">
+          <button type="submit"
+            class="px-5 py-2.5 rounded-2xl bg-emerald-500 text-slate-900 font-semibold text-sm transition hover:bg-emerald-400">
+            Save changes
+          </button>
+          <button id="delete-task" type="button"
+            class="px-5 py-2.5 rounded-2xl border border-red-500 text-red-400 text-sm transition hover:bg-red-500/10">
+            Delete task
+          </button>
+        </div>
+      </form>
+    </section>
+  </div>
+
+  <div id="toast" class="fixed bottom-6 right-6 hidden max-w-xs rounded-2xl px-4 py-3 text-sm font-medium"></div>
+
+  <script>
+    const tasksContainer = document.getElementById("tasks-list");
+    const fetchState = document.getElementById("fetch-state");
+    const toast = document.getElementById("toast");
+    const editorPanel = document.getElementById("editor-panel");
+    const updateForm = document.getElementById("update-task-form");
+    const deleteBtn = document.getElementById("delete-task");
+    const closeEditorBtn = document.getElementById("close-editor");
+
+    let currentTasks = [];
+    let activeEditTask = null;
+
+    function showToast(message, variant = "success") {
+      toast.textContent = message;
+      toast.className = `fixed bottom-6 right-6 max-w-xs rounded-2xl px-4 py-3 text-sm font-medium transition ${variant === "success"
+        ? "bg-emerald-500 text-slate-950"
+        : "bg-rose-500 text-white"}`;
+      toast.classList.remove("opacity-0");
+      toast.classList.add("animate-[pulse_0.7s_linear]");
+      toast.hidden = false;
+      setTimeout(() => {
+        toast.hidden = true;
+        toast.classList.remove("animate-[pulse_0.7s_linear]");
+      }, 2500);
+    }
+
+    async function loadTasks() {
+      fetchState.textContent = "Loading...";
+      try {
+        const response = await fetch("/api/tasks");
+        const tasks = await response.json();
+        currentTasks = tasks;
+        renderTaskList(tasks);
+        fetchState.textContent = `${tasks.length} tasks`;
+      } catch (error) {
+        console.error("Failed to load tasks", error);
+        tasksContainer.innerHTML =
+          "<p class='rounded-2xl border border-dashed border-slate-800 p-6 text-center text-sm text-rose-300'>Unable to fetch tasks.</p>";
+        fetchState.textContent = "Error";
+      }
+    }
+
+    function renderTaskList(tasks) {
+      if (!tasks.length) {
+        tasksContainer.innerHTML = `
+          <p class="rounded-2xl border border-dashed border-slate-800 p-6 text-center text-sm text-slate-400">
+            No tasks yet. Create one above to get started.
+          </p>
+        `;
+        return;
+      }
+
+      tasksContainer.innerHTML = "";
+
+      tasks.forEach(task => {
+        const lastRun = task.last_run ? new Date(task.last_run).toLocaleString() : "Never";
+        const card = document.createElement("article");
+        card.className = "border border-slate-800 rounded-3xl bg-slate-900/40 p-5 shadow-[0_10px_60px_rgba(2,6,23,0.45)]";
+
+        card.innerHTML = `
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <p class="text-xs uppercase tracking-[0.4em] text-emerald-300">Task</p>
+              <h3 class="text-xl font-semibold">${task.task_name}</h3>
+              <p class="text-sm text-slate-400 mt-1 max-h-[4.5rem] overflow-hidden">${task.prompt_template || "No prompt set."}</p>
+            </div>
+            <div class="text-right text-sm text-slate-400 space-y-1">
+              <p class="text-xs uppercase tracking-[0.3em]">Status</p>
+              <p class="${task.is_active ? "text-emerald-400" : "text-slate-500"} font-semibold">${task.is_active ? "Active" : "Inactive"}</p>
+              <p class="mt-2 text-xs uppercase tracking-[0.3em]">Last run</p>
+              <p class="text-slate-400">${lastRun}</p>
+            </div>
+          </div>
+          <div class="mt-4 grid md:grid-cols-3 gap-3 text-xs text-slate-400">
+            <div>
+              <p class="text-[0.65rem] uppercase tracking-[0.3em] text-slate-500">Runs</p>
+              <p class="text-slate-200 font-semibold">${task.total_runs}</p>
+            </div>
+            <div>
+              <p class="text-[0.65rem] uppercase tracking-[0.3em] text-slate-500">Links</p>
+              <p class="text-slate-200 font-semibold">${task.total_links_found}</p>
+            </div>
+            <div>
+              <p class="text-[0.65rem] uppercase tracking-[0.3em] text-slate-500">Schedule</p>
+              <p class="text-slate-200 font-semibold">${task.schedule || "Not set"}</p>
+            </div>
+          </div>
+          <div class="mt-4 flex flex-wrap gap-3">
+            <button data-task="${task.task_name}" class="run-task-btn px-4 py-2 text-sm rounded-2xl bg-emerald-500/80 hover:bg-emerald-500 transition">
+              Run now
+            </button>
+            <button data-task="${task.task_name}" class="edit-task-btn px-4 py-2 text-sm rounded-2xl border border-slate-700 hover:border-emerald-400 transition">
+              Edit
+            </button>
+          </div>
+        `;
+
+        tasksContainer.appendChild(card);
+      });
+
+      document.querySelectorAll(".run-task-btn").forEach(btn => {
+        btn.addEventListener("click", () => runTask(btn.dataset.task, btn));
+      });
+
+      document.querySelectorAll(".edit-task-btn").forEach(btn => {
+        btn.addEventListener("click", () => openEditor(btn.dataset.task));
+      });
+    }
+
+    const runningTasks = new Set();
+
+    async function runTask(taskName, button) {
+      if (runningTasks.has(taskName)) {
+        showToast(`"${taskName}" is already running.`, "error");
+        return;
+      }
+
+      runningTasks.add(taskName);
+      button.disabled = true;
+      const originalLabel = button.textContent;
+      button.textContent = "Running…";
+      button.classList.add("opacity-70", "pointer-events-none");
+
+      try {
+        const response = await fetch(`/api/tasks/${encodeURIComponent(taskName)}/run`, {
+          method: "POST"
+        });
+        const payload = await response.json();
+        if (response.ok && payload.success) {
+          const linkWord = payload.new_links === 1 ? "link" : "link(s)";
+          showToast(`"${taskName}" accepted (${payload.new_links ?? 0} new ${linkWord}).`);
+          await loadTasks();
+        } else {
+          showToast(payload.detail || payload.error || "Run failed", "error");
+        }
+      } catch (error) {
+        console.error(error);
+        showToast("Unable to run task", "error");
+      } finally {
+        runningTasks.delete(taskName);
+        button.disabled = false;
+        button.textContent = originalLabel;
+        button.classList.remove("opacity-70", "pointer-events-none");
+      }
+    }
+
+    function openEditor(taskName) {
+      const task = currentTasks.find(t => t.task_name === taskName);
+      if (!task) return;
+
+      activeEditTask = task;
+      document.getElementById("edit-task-name").textContent = task.task_name;
+      document.getElementById("edit-task-prompt").value = task.prompt_template || "";
+      document.getElementById("edit-task-schedule").value = task.schedule || "";
+      document.getElementById("edit-task-active").checked = Boolean(task.is_active);
+
+      editorPanel.classList.remove("hidden");
+      editorPanel.scrollIntoView({ behavior: "smooth" });
+    }
+
+    closeEditorBtn?.addEventListener("click", () => {
+      activeEditTask = null;
+      editorPanel.classList.add("hidden");
+    });
+
+    updateForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (!activeEditTask) return;
+
+      const prompt = document.getElementById("edit-task-prompt").value.trim();
+      const schedule = document.getElementById("edit-task-schedule").value.trim();
+      const isActive = document.getElementById("edit-task-active").checked;
+
+      try {
+        const response = await fetch(`/api/tasks/${encodeURIComponent(activeEditTask.task_name)}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            prompt_template: prompt,
+            schedule: schedule || null,
+            is_active: isActive
+          })
+        });
+
+        if (response.ok) {
+          showToast("Task updated");
+          await loadTasks();
+        } else {
+          const err = await response.json();
+          showToast(err.detail || "Update failed", "error");
+        }
+      } catch (error) {
+        console.error(error);
+        showToast("Unable to update task", "error");
+      }
+    });
+
+    deleteBtn.addEventListener("click", async () => {
+      if (!activeEditTask) return;
+      if (!confirm(`Delete "${activeEditTask.task_name}" and all its stats?`)) {
+        return;
+      }
+      try {
+        const response = await fetch(`/api/tasks/${encodeURIComponent(activeEditTask.task_name)}`, {
+          method: "DELETE"
+        });
+        if (response.ok) {
+          showToast("Task removed");
+          activeEditTask = null;
+          editorPanel.classList.add("hidden");
+          await loadTasks();
+        } else {
+          const err = await response.json();
+          showToast(err.detail || "Delete failed", "error");
+        }
+      } catch (error) {
+        console.error(error);
+        showToast("Unable to delete task", "error");
+      }
+    });
+
+    document.getElementById("create-task-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const name = document.getElementById("new-task-name").value.trim();
+      const prompt = document.getElementById("new-task-prompt").value.trim();
+      const schedule = document.getElementById("new-task-schedule").value.trim();
+      const active = document.getElementById("new-task-active").checked;
+
+      if (!name || !prompt) {
+        showToast("Task name and prompt are required", "error");
+        return;
+      }
+
+      try {
+        const response = await fetch("/api/tasks", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            task_name: name,
+            prompt_template: prompt,
+            schedule: schedule || null,
+            is_active: active
+          })
+        });
+
+        if (response.ok) {
+          showToast("Task created");
+          document.getElementById("create-task-form").reset();
+          document.getElementById("new-task-active").checked = true;
+          await loadTasks();
+        } else {
+          const err = await response.json();
+          showToast(err.detail || "Creation failed", "error");
+        }
+      } catch (error) {
+        console.error(error);
+        showToast("Unable to create task", "error");
+      }
+    });
+
+    window.addEventListener("DOMContentLoaded", () => {
+      loadTasks();
+      lucide.createIcons();
+    });
+  </script>
+</body>
+
+</html>
