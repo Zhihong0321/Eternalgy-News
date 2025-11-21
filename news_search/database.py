@@ -134,6 +134,10 @@ class Database:
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
             """)
+            cursor.execute("""
+                ALTER TABLE rewriter_prompts
+                ADD COLUMN IF NOT EXISTS model VARCHAR(255);
+            """)
 
             # Store per-run summaries for visibility in the UI
             cursor.execute("""
@@ -566,22 +570,21 @@ class Database:
         """Return the stored rewriter prompt/model or defaults."""
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("""
-                SELECT prompt FROM rewriter_prompts
-                ORDER BY updated_at DESC
-                LIMIT 1
-            """)
-            row_prompt = cursor.fetchone()
-            # model may be NULL; reuse same row if present
-            cursor.execute("""
-                SELECT model FROM rewriter_prompts
-                ORDER BY updated_at DESC
-                LIMIT 1
-            """)
-            row_model = cursor.fetchone()
+            try:
+                cursor.execute("""
+                    SELECT prompt, model
+                    FROM rewriter_prompts
+                    ORDER BY updated_at DESC
+                    LIMIT 1
+                """)
+                row = cursor.fetchone()
+                prompt_val = row[0] if row else ""
+                model_val = row[1] if row else None
+            except Exception:
+                # Handle legacy tables missing the model column
+                cursor.close()
+                return {"prompt": "", "model": None}
             cursor.close()
-            prompt_val = row_prompt[0] if row_prompt else ""
-            model_val = row_model[0] if row_model else None
             return {"prompt": prompt_val, "model": model_val}
 
     def set_rewriter_prompt(self, prompt: str, model: Optional[str] = None):
