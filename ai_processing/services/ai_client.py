@@ -55,13 +55,17 @@ class AIClient:
         """
         headers = {
             "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            # OpenRouter requires a referer or title; provide both
+            "HTTP-Referer": "https://eternalgyn-rewriter.local",
+            "X-Title": "Eternalgy-News-Rewriter"
         }
         
         payload = {
             "model": self.model,
             "messages": messages,
-            "temperature": temperature
+            "temperature": temperature,
+            "n": 1
         }
         
         if max_tokens:
@@ -82,9 +86,15 @@ class AIClient:
                     json=payload,
                     timeout=self.timeout
                 )
-                response.raise_for_status()
+                if response.status_code != 200:
+                    # Capture error body for debugging
+                    try:
+                        err_text = response.text
+                    except Exception:
+                        err_text = ""
+                    raise Exception(f"API request failed: {response.status_code} {err_text}")
                 return response.json()
-            
+
             except requests.exceptions.RequestException as e:
                 if attempt == self.max_retries - 1:
                     raise Exception(f"API request failed after {self.max_retries} retries: {e}")

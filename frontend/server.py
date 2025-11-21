@@ -39,14 +39,12 @@ class QueryTaskCreateRequest(BaseModel):
     prompt_template: str
     schedule: Optional[str] = None
     is_active: Optional[bool] = True
-    model: Optional[str] = None
 
 
 class QueryTaskUpdateRequest(BaseModel):
     prompt_template: Optional[str]
     schedule: Optional[str]
     is_active: Optional[bool]
-    model: Optional[str]
 
 
 def _run_task_by_name(task_name: str):
@@ -308,8 +306,7 @@ def create_query_task(request: QueryTaskCreateRequest):
             task_name=request.task_name.strip(),
             prompt_template=request.prompt_template.strip(),
             schedule=request.schedule,
-            is_active=request.is_active if request.is_active is not None else True,
-            model=request.model.strip() if request.model else None
+            is_active=request.is_active if request.is_active is not None else True
         )
         return {"success": True, "task_id": task_id}
     except Exception as e:
@@ -326,8 +323,7 @@ def update_query_task(task_name: str, request: QueryTaskUpdateRequest):
             task_name,
             prompt_template=(request.prompt_template.strip() if request.prompt_template is not None else None),
             schedule=(request.schedule.strip() if request.schedule is not None else None),
-            is_active=request.is_active,
-            model=(request.model.strip() if request.model is not None else None)
+            is_active=request.is_active
         )
         if not updated:
             raise HTTPException(status_code=404, detail="Task not found.")
@@ -396,28 +392,29 @@ def reprocess_task_links(task_name: str, limit: int = 50):
 
 @app.get("/api/rewriter/prompt")
 def get_rewriter_prompt():
-    """Return the stored News Rewriter prompt."""
+    """Return the stored News Rewriter prompt and model."""
     try:
-        prompt = db.get_rewriter_prompt()
-        # Fallback to the code-defined template if none saved yet
-        if not prompt:
-            prompt = NEWS_REWRITER_TEMPLATE
-        return {"prompt": prompt or ""}
+        settings = db.get_rewriter_prompt()
+        # Fallbacks to env/template if none saved yet
+        prompt = settings.get("prompt") or NEWS_REWRITER_TEMPLATE
+        model = settings.get("model") or os.getenv("AI_MODEL", "")
+        return {"prompt": prompt or "", "model": model}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 class RewriterPromptUpdateRequest(BaseModel):
     prompt: str
+    model: Optional[str] = None
 
 
 @app.put("/api/rewriter/prompt")
 def set_rewriter_prompt(request: RewriterPromptUpdateRequest):
-    """Save the News Rewriter prompt."""
+    """Save the News Rewriter prompt and model."""
     if not request.prompt.strip():
         raise HTTPException(status_code=400, detail="Prompt cannot be empty.")
     try:
-        db.set_rewriter_prompt(request.prompt)
+        db.set_rewriter_prompt(request.prompt, request.model.strip() if request.model else None)
         return {"success": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

@@ -130,6 +130,7 @@ class Database:
                 CREATE TABLE IF NOT EXISTS rewriter_prompts (
                     id SERIAL PRIMARY KEY,
                     prompt TEXT NOT NULL,
+                    model VARCHAR(255),
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
             """)
@@ -561,8 +562,8 @@ class Database:
             cursor.close()
             return [dict(row) for row in rows]
 
-    def get_rewriter_prompt(self) -> str:
-        """Return the stored rewriter prompt or empty string if none."""
+    def get_rewriter_prompt(self) -> Dict:
+        """Return the stored rewriter prompt/model or defaults."""
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
@@ -570,18 +571,27 @@ class Database:
                 ORDER BY updated_at DESC
                 LIMIT 1
             """)
-            row = cursor.fetchone()
+            row_prompt = cursor.fetchone()
+            # model may be NULL; reuse same row if present
+            cursor.execute("""
+                SELECT model FROM rewriter_prompts
+                ORDER BY updated_at DESC
+                LIMIT 1
+            """)
+            row_model = cursor.fetchone()
             cursor.close()
-            return row[0] if row else ""
+            prompt_val = row_prompt[0] if row_prompt else ""
+            model_val = row_model[0] if row_model else None
+            return {"prompt": prompt_val, "model": model_val}
 
-    def set_rewriter_prompt(self, prompt: str):
-        """Save or update the rewriter prompt."""
+    def set_rewriter_prompt(self, prompt: str, model: Optional[str] = None):
+        """Save or update the rewriter prompt/model."""
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                INSERT INTO rewriter_prompts (prompt)
-                VALUES (%s)
-            """, (prompt,))
+                INSERT INTO rewriter_prompts (prompt, model)
+                VALUES (%s, %s)
+            """, (prompt, model))
             cursor.close()
 
     def get_completed_missing_content(self, task_name: str, limit: int = 50) -> List[Dict]:

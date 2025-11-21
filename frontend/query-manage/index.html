@@ -133,6 +133,13 @@
           Save prompt
         </button>
       </div>
+      <div class="flex gap-4 flex-wrap mb-3">
+        <div class="flex-1 min-w-[200px]">
+          <label class="text-sm text-slate-400 block mb-1" for="rewriter-model">Rewriter model</label>
+          <input id="rewriter-model" placeholder="e.g. openai/gpt-oss-20b:free"
+            class="w-full bg-slate-950/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm focus:ring-2 focus:ring-emerald-400 outline-none" />
+        </div>
+      </div>
       <textarea id="rewriter-prompt" rows="10"
         class="w-full bg-slate-950/60 border border-slate-800 rounded-2xl px-4 py-3 text-sm focus:ring-2 focus:ring-emerald-400 outline-none"></textarea>
     </section>
@@ -150,6 +157,7 @@
     const closeEditorBtn = document.getElementById("close-editor");
     const saveRewriterBtn = document.getElementById("save-rewriter-prompt");
     const rewriterPromptField = document.getElementById("rewriter-prompt");
+    const rewriterModelField = document.getElementById("rewriter-model");
 
     let currentTasks = [];
     let activeEditTask = null;
@@ -572,6 +580,7 @@
         const data = await res.json();
         if (res.ok) {
           rewriterPromptField.value = data.prompt || "";
+          if (rewriterModelField) rewriterModelField.value = data.model || "";
         } else {
           showToast(data.detail || "Failed to load prompt", "error");
         }
@@ -583,11 +592,12 @@
 
     saveRewriterBtn?.addEventListener("click", async () => {
       const prompt = rewriterPromptField.value || "";
+      const model = rewriterModelField?.value?.trim() || null;
       try {
         const res = await fetch("/api/rewriter/prompt", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt })
+          body: JSON.stringify({ prompt, model })
         });
         const data = await res.json().catch(() => ({}));
         if (res.ok) {
