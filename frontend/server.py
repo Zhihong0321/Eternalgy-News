@@ -16,6 +16,11 @@ app = FastAPI()
 
 # Initialize database
 db = Database()
+# Ensure tables exist (creates tables if missing)
+try:
+    db.init_tables()
+except Exception as e:
+    print(f"Warning: database init_tables failed: {e}")
 
 class NewsItem(BaseModel):
     id: int
