@@ -5,19 +5,24 @@ from contextlib import contextmanager
 from datetime import datetime
 import hashlib
 from typing import Optional, List, Dict
-from .config import DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD
+from .config import DB_CONFIG
 from .url_normalizer import normalize_url, is_valid_url, extract_domain
 
 
 class Database:
     def __init__(self):
         self.connection_params = {
-            "host": DB_HOST,
-            "port": DB_PORT,
-            "database": DB_NAME,
-            "user": DB_USER,
-            "password": DB_PASSWORD
+            "host": DB_CONFIG["host"],
+            "port": DB_CONFIG["port"],
+            "database": DB_CONFIG["database"],
+            "user": DB_CONFIG["user"],
+            "password": DB_CONFIG["password"],
         }
+
+        # Optional SSL mode for managed Postgres (e.g., Railway)
+        sslmode = DB_CONFIG.get("sslmode")
+        if sslmode:
+            self.connection_params["sslmode"] = sslmode
     
     @contextmanager
     def get_connection(self):
