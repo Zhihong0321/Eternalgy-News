@@ -17,6 +17,9 @@
       <a href="/" class="text-sm text-emerald-300 underline">Back to feed</a>
     </header>
 
+    <!-- Sticky error/log panel -->
+    <div id="error-panel" class="hidden bg-rose-900/30 border border-rose-700 rounded-2xl px-4 py-3 text-sm text-rose-100 whitespace-pre-wrap"></div>
+
     <!-- Search -->
     <section class="bg-slate-900/70 border border-slate-800 rounded-3xl p-5 space-y-4">
       <div class="flex items-center justify-between">
@@ -94,11 +97,21 @@
 
   <script>
     const toast = document.getElementById("toast");
+    const errorPanel = document.getElementById("error-panel");
     function showToast(msg, variant = "success") {
       toast.textContent = msg;
       toast.className = `fixed bottom-6 right-6 px-4 py-3 rounded-xl text-sm font-semibold ${variant === "success" ? "bg-emerald-500 text-slate-900" : "bg-rose-500 text-white"}`;
       toast.classList.remove("hidden");
       setTimeout(() => toast.classList.add("hidden"), 3000);
+    }
+    function showErrorPanel(msg) {
+      if (!msg) {
+        errorPanel.classList.add("hidden");
+        errorPanel.textContent = "";
+        return;
+      }
+      errorPanel.textContent = msg;
+      errorPanel.classList.remove("hidden");
     }
 
     const searchPrompt = document.getElementById("search-prompt");
@@ -109,6 +122,7 @@
       searchWrapped.textContent = "";
       searchRaw.value = "";
       searchResults.innerHTML = "";
+      showErrorPanel("");
       try {
         const res = await fetch("/api/pipeline/search", {
           method: "POST",
@@ -131,7 +145,8 @@
         showToast("Search done");
       } catch (e) {
         console.error(e);
-        showToast(e.message, "error");
+        showErrorPanel(e.message);
+        showToast("Error (see error panel)", "error");
       }
     });
 
@@ -141,6 +156,7 @@
     document.getElementById("run-jina").addEventListener("click", async () => {
       jinaParsed.textContent = "";
       jinaRaw.value = "";
+      showErrorPanel("");
       try {
         const res = await fetch("/api/pipeline/jina", {
           method: "POST",
@@ -158,7 +174,8 @@
         showToast("Jina done");
       } catch (e) {
         console.error(e);
-        showToast(e.message, "error");
+        showErrorPanel(e.message);
+        showToast("Error (see error panel)", "error");
       }
     });
 
@@ -167,6 +184,7 @@
     document.getElementById("run-rewrite").addEventListener("click", async () => {
       rwParsed.textContent = "";
       rwRaw.value = "";
+      showErrorPanel("");
       try {
         const res = await fetch("/api/pipeline/rewrite", {
           method: "POST",
@@ -187,7 +205,8 @@
         showToast("Rewrite done");
       } catch (e) {
         console.error(e);
-        showToast(e.message, "error");
+        showErrorPanel(e.message);
+        showToast("Error (see error panel)", "error");
       }
     });
 
