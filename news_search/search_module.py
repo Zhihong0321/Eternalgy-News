@@ -47,7 +47,8 @@ User intent: {user_intent}
         print(f"Prompt: {prompt}")
 
         # Build a client with per-task model if provided
-        search_client = SearchClient(model=model_override) if model_override else self.search_client
+        model_name = model_override or None
+        search_client = SearchClient(model=model_name) if model_name else self.search_client
 
         wrapped_prompt = self._build_search_prompt(prompt)
         
