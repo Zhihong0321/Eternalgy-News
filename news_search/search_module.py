@@ -56,11 +56,18 @@ class NewsSearchModule:
         }
         
         # Auto-process new links if enabled and processor is available
-        if AUTO_PROCESS_AFTER_SEARCH and self.processor_worker and results["new_links"] > 0:
+        if (
+            AUTO_PROCESS_AFTER_SEARCH
+            and self.processor_worker
+            and getattr(self.processor_worker, "ai_processor", None)
+            and results["new_links"] > 0
+        ):
             print(f"\nAuto-processing {results['new_links']} new links...")
             new_link_ids = [item["id"] for item in results["urls"]]
             processing_result = self.processor_worker.process_specific_links(new_link_ids)
             search_result["processing"] = processing_result
+        elif AUTO_PROCESS_AFTER_SEARCH and not getattr(self.processor_worker, "ai_processor", None):
+            print("Auto-processing skipped: AI processor not configured.")
         
         return search_result
     

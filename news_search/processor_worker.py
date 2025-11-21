@@ -202,10 +202,11 @@ class ProcessorWorker:
                     else:
                         print(f"  Attempt {attempt}/{MAX_RETRIES}: Processing returned None")
                 else:
-                    print(f"  [Mock] Processing {url}")
-                    time.sleep(0.5)
-                    self.db.update_link_status(link_id, 'completed')
-                    return "success"
+                    # Without an AI processor we cannot produce content; leave the link pending.
+                    print(f"  [Skip] AI processor not configured; leaving link pending: {url}")
+                    # Leave status as pending so it can be processed once AI is configured.
+                    self.db.update_link_status(link_id, 'pending', 'AI processor not configured')
+                    return "failed"
                     
             except Exception as e:
                 print(f"  Attempt {attempt}/{MAX_RETRIES}: Error - {str(e)}")
