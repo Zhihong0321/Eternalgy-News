@@ -475,7 +475,7 @@ def pipeline_search(body: Dict):
                                             "url": {"type": "string"},
                                             "title": {"type": "string"}
                                         },
-                                        "required": ["url"],
+                                        "required": ["url", "title"],
                                         "additionalProperties": False
                                     }
                                 }
