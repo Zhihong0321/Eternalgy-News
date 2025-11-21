@@ -354,6 +354,41 @@ def run_query_task(task_name: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/tasks/{task_name}/recent")
+def recent_processed(task_name: str, limit: int = 5):
+    """Return recent processed/attempted items for a task."""
+    try:
+        return db.get_recent_processed(task_name, limit=limit)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/tasks/{task_name}/reprocess")
+def reprocess_task_links(task_name: str, limit: int = 50):
+    """
+    Reprocess pending/failed links for a task.
+    """
+    try:
+        links = db.get_links_by_status(task_name, ["pending", "failed"], limit=limit)
+        if not links:
+            return {"success": True, "processed": 0, "message": "No pending/failed links"}
+
+        if not processor_worker or not getattr(processor_worker, "ai_processor", None):
+            raise HTTPException(status_code=400, detail="AI processor is not configured")
+
+        link_ids = [item["id"] for item in links]
+        result = processor_worker.process_specific_links(link_ids)
+        return {
+            "success": True,
+            "requested": len(link_ids),
+            "result": result,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/health")
 def health():
     """

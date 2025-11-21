@@ -185,10 +185,10 @@
         const executedAt = summary.executed_at ? new Date(summary.executed_at).toLocaleString() : lastRun;
         const searchStats = summary.search || {};
         const processing = summary.processing || {};
-        const procTotal = processing.total ?? 0;
-        const procSuccess = processing.success ?? 0;
-        const procFailed = processing.failed ?? 0;
-        const procSkipped = processing.skipped ?? 0;
+        const procTotal = processing.total ?? task.total_links ?? 0;
+        const procSuccess = processing.success ?? task.completed_links ?? 0;
+        const procFailed = processing.failed ?? task.failed_links ?? 0;
+        const procSkipped = processing.skipped ?? task.pending_links ?? 0;
         const detailRows = (processing.details || []).slice(0, 6);
 
         const card = document.createElement("article");
@@ -227,19 +227,21 @@
               <div class="space-y-1">
                 <p class="text-xs uppercase tracking-[0.3em] text-slate-500">Search</p>
                 <div class="flex gap-3 text-sm flex-wrap">
-                  <span class="px-3 py-1 rounded-xl bg-slate-800/80">URLs: ${searchStats.total_urls ?? 0}</span>
+                  <span class="px-3 py-1 rounded-xl bg-slate-800/80">URLs: ${searchStats.total_urls ?? task.total_links ?? 0}</span>
                   <span class="px-3 py-1 rounded-xl bg-emerald-500/10 text-emerald-300">New: ${searchStats.new_links ?? 0}</span>
                   <span class="px-3 py-1 rounded-xl bg-amber-500/10 text-amber-200">Dup: ${searchStats.duplicates ?? 0}</span>
                   <span class="px-3 py-1 rounded-xl bg-rose-500/10 text-rose-200">Invalid: ${searchStats.invalid ?? 0}</span>
                 </div>
               </div>
               <div class="space-y-1">
-                <p class="text-xs uppercase tracking-[0.3em] text-slate-500">Processing</p>
+                <p class="text-xs uppercase tracking-[0.3em] text-slate-500">Processing (DB)</p>
                 <div class="flex gap-3 text-sm flex-wrap">
                   <span class="px-3 py-1 rounded-xl bg-slate-800/80">Total: ${procTotal}</span>
                   <span class="px-3 py-1 rounded-xl bg-emerald-500/10 text-emerald-300">Saved: ${procSuccess}</span>
                   <span class="px-3 py-1 rounded-xl bg-rose-500/10 text-rose-200">Failed: ${procFailed}</span>
+                  <span class="px-3 py-1 rounded-xl bg-amber-500/10 text-amber-200">Pending: ${task.pending_links ?? 0}</span>
                   <span class="px-3 py-1 rounded-xl bg-amber-500/10 text-amber-200">Skipped: ${procSkipped}</span>
+                  <span class="px-3 py-1 rounded-xl bg-slate-800/80">Blocked: ${task.blocked_links ?? 0}</span>
                 </div>
               </div>
             </div>
@@ -260,6 +262,7 @@
                   `).join("")}
                 </div>
               `}
+              <div class="mt-3" id="recent-${task.task_name}"></div>
             </div>
           </div>
           <div class="mt-4 flex flex-wrap gap-3">
@@ -269,10 +272,14 @@
             <button data-task="${task.task_name}" class="edit-task-btn px-4 py-2 text-sm rounded-2xl border border-slate-700 hover:border-emerald-400 transition">
               Edit
             </button>
+            <button data-task="${task.task_name}" class="reprocess-task-btn px-4 py-2 text-sm rounded-2xl border border-amber-400 text-amber-200 hover:bg-amber-500/10 transition">
+              Reprocess pending/failed
+            </button>
           </div>
         `;
 
         tasksContainer.appendChild(card);
+        loadRecent(task.task_name);
       });
 
       document.querySelectorAll(".run-task-btn").forEach(btn => {
@@ -281,6 +288,10 @@
 
       document.querySelectorAll(".edit-task-btn").forEach(btn => {
         btn.addEventListener("click", () => openEditor(btn.dataset.task));
+      });
+
+      document.querySelectorAll(".reprocess-task-btn").forEach(btn => {
+        btn.addEventListener("click", () => reprocessTask(btn.dataset.task, btn));
       });
     }
 
@@ -318,6 +329,60 @@
         button.disabled = false;
         button.textContent = originalLabel;
         button.classList.remove("opacity-70", "pointer-events-none");
+      }
+    }
+
+    async function loadRecent(taskName) {
+      const slot = document.getElementById(`recent-${taskName}`);
+      if (!slot) return;
+      slot.textContent = "Loading recent items.";
+      try {
+        const res = await fetch(`/api/tasks/${encodeURIComponent(taskName)}/recent`);
+        const items = await res.json();
+        if (!res.ok) throw new Error("Failed to fetch recent items");
+        if (!items.length) {
+          slot.innerHTML = `<p class="text-sm text-slate-500">No processed items yet.</p>`;
+          return;
+        }
+        slot.innerHTML = `
+          <p class="text-xs uppercase tracking-[0.3em] text-slate-500 mb-2">Recent items</p>
+          <div class="divide-y divide-slate-800 rounded-xl border border-slate-800 overflow-hidden">
+            ${items.map(it => `
+              <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-2 px-3 py-2 bg-slate-900/30">
+                <div class="text-sm text-slate-200 truncate max-w-[65%]">${it.title || it.url}</div>
+                <div class="flex items-center gap-2 text-xs text-slate-400">
+                  <span class="px-2 py-0.5 rounded-full ${it.status === "completed" ? "bg-emerald-500/20 text-emerald-200" : it.status === "failed" ? "bg-rose-500/20 text-rose-200" : it.status === "pending" ? "bg-amber-500/20 text-amber-200" : "bg-slate-700"}">${it.status || "unknown"}</span>
+                  ${it.url ? `<a class="text-emerald-300 underline" href="${it.url}" target="_blank" rel="noreferrer">Link</a>` : ""}
+                </div>
+              </div>
+            `).join("")}
+          </div>
+        `;
+      } catch (e) {
+        console.error(e);
+        slot.innerHTML = `<p class="text-sm text-rose-400">Failed to load recent items.</p>`;
+      }
+    }
+
+    async function reprocessTask(taskName, button) {
+      button.disabled = true;
+      const original = button.textContent;
+      button.textContent = "Reprocessing.";
+      try {
+        const res = await fetch(`/api/tasks/${encodeURIComponent(taskName)}/reprocess`, { method: "POST" });
+        const payload = await res.json();
+        if (!res.ok || !payload.success) {
+          showToast(payload.detail || payload.error || "Reprocess failed", "error");
+        } else {
+          showToast(`Reprocess triggered (${payload.result?.total ?? payload.requested ?? 0} links)`);
+          await loadTasks();
+        }
+      } catch (e) {
+        console.error(e);
+        showToast("Reprocess failed", "error");
+      } finally {
+        button.disabled = false;
+        button.textContent = original;
       }
     }
 

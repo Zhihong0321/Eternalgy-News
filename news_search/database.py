@@ -343,14 +343,20 @@ class Database:
             return [dict(row) for row in results]
 
     def get_all_tasks(self) -> List[Dict]:
-        """List all query tasks with their latest run summary if available"""
+        """List all query tasks with their latest run summary and basic link stats."""
         with self.get_connection() as conn:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
             cursor.execute("""
                 SELECT 
                     qt.*,
                     latest.summary AS latest_run_summary,
-                    latest.created_at AS latest_run_at
+                    latest.created_at AS latest_run_at,
+                    COALESCE(stats.total_links, 0) AS total_links,
+                    COALESCE(stats.completed_links, 0) AS completed_links,
+                    COALESCE(stats.pending_links, 0) AS pending_links,
+                    COALESCE(stats.failed_links, 0) AS failed_links,
+                    COALESCE(stats.blocked_links, 0) AS blocked_links,
+                    COALESCE(stats.processed_rows, 0) AS processed_rows
                 FROM query_tasks qt
                 LEFT JOIN LATERAL (
                     SELECT summary, created_at
@@ -359,6 +365,21 @@ class Database:
                     ORDER BY created_at DESC
                     LIMIT 1
                 ) AS latest ON TRUE
+                LEFT JOIN LATERAL (
+                    SELECT
+                        COUNT(*) AS total_links,
+                        COUNT(*) FILTER (WHERE status = 'completed') AS completed_links,
+                        COUNT(*) FILTER (WHERE status = 'pending') AS pending_links,
+                        COUNT(*) FILTER (WHERE status = 'failed') AS failed_links,
+                        COUNT(*) FILTER (WHERE status = 'blocked') AS blocked_links,
+                        (
+                            SELECT COUNT(*) FROM processed_content pc
+                            JOIN news_links nl2 ON nl2.id = pc.link_id
+                            WHERE nl2.source_task = qt.task_name
+                        ) AS processed_rows
+                    FROM news_links nl
+                    WHERE nl.source_task = qt.task_name
+                ) AS stats ON TRUE
                 ORDER BY qt.task_name
             """)
             results = cursor.fetchall()
@@ -462,6 +483,44 @@ class Database:
                 ORDER BY created_at DESC
                 LIMIT %s
             """, (task_name, limit))
+            rows = cursor.fetchall()
+            cursor.close()
+            return [dict(row) for row in rows]
+
+    def get_recent_processed(self, task_name: str, limit: int = 5) -> List[Dict]:
+        """Fetch recent processed items (title/url/status) for a task."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor.execute("""
+                SELECT 
+                    nl.id AS link_id,
+                    nl.url,
+                    nl.status,
+                    nl.error_message,
+                    nl.processed_at,
+                    pc.title,
+                    pc.translated_content
+                FROM news_links nl
+                LEFT JOIN processed_content pc ON pc.link_id = nl.id
+                WHERE nl.source_task = %s
+                ORDER BY nl.processed_at DESC NULLS LAST, nl.discovered_at DESC
+                LIMIT %s
+            """, (task_name, limit))
+            rows = cursor.fetchall()
+            cursor.close()
+            return [dict(row) for row in rows]
+
+    def get_links_by_status(self, task_name: str, statuses: List[str], limit: int = 50) -> List[Dict]:
+        """Fetch links for a task filtered by status."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor.execute("""
+                SELECT id, url, title, status
+                FROM news_links
+                WHERE source_task = %s AND status = ANY(%s)
+                ORDER BY discovered_at DESC
+                LIMIT %s
+            """, (task_name, statuses, limit))
             rows = cursor.fetchall()
             cursor.close()
             return [dict(row) for row in rows]
