@@ -181,6 +181,16 @@
 
       tasks.forEach(task => {
         const lastRun = task.last_run ? new Date(task.last_run).toLocaleString() : "Never";
+        const summary = task.latest_run_summary || {};
+        const executedAt = summary.executed_at ? new Date(summary.executed_at).toLocaleString() : lastRun;
+        const searchStats = summary.search || {};
+        const processing = summary.processing || {};
+        const procTotal = processing.total ?? 0;
+        const procSuccess = processing.success ?? 0;
+        const procFailed = processing.failed ?? 0;
+        const procSkipped = processing.skipped ?? 0;
+        const detailRows = (processing.details || []).slice(0, 6);
+
         const card = document.createElement("article");
         card.className = "border border-slate-800 rounded-3xl bg-slate-900/40 p-5 shadow-[0_10px_60px_rgba(2,6,23,0.45)]";
 
@@ -195,7 +205,7 @@
               <p class="text-xs uppercase tracking-[0.3em]">Status</p>
               <p class="${task.is_active ? "text-emerald-400" : "text-slate-500"} font-semibold">${task.is_active ? "Active" : "Inactive"}</p>
               <p class="mt-2 text-xs uppercase tracking-[0.3em]">Last run</p>
-              <p class="text-slate-400">${lastRun}</p>
+              <p class="text-slate-400">${executedAt || "Never"}</p>
             </div>
           </div>
           <div class="mt-4 grid md:grid-cols-3 gap-3 text-xs text-slate-400">
@@ -210,6 +220,46 @@
             <div>
               <p class="text-[0.65rem] uppercase tracking-[0.3em] text-slate-500">Schedule</p>
               <p class="text-slate-200 font-semibold">${task.schedule || "Not set"}</p>
+            </div>
+          </div>
+          <div class="mt-4 rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+            <div class="flex flex-wrap gap-4 text-sm text-slate-300">
+              <div class="space-y-1">
+                <p class="text-xs uppercase tracking-[0.3em] text-slate-500">Search</p>
+                <div class="flex gap-3 text-sm flex-wrap">
+                  <span class="px-3 py-1 rounded-xl bg-slate-800/80">URLs: ${searchStats.total_urls ?? 0}</span>
+                  <span class="px-3 py-1 rounded-xl bg-emerald-500/10 text-emerald-300">New: ${searchStats.new_links ?? 0}</span>
+                  <span class="px-3 py-1 rounded-xl bg-amber-500/10 text-amber-200">Dup: ${searchStats.duplicates ?? 0}</span>
+                  <span class="px-3 py-1 rounded-xl bg-rose-500/10 text-rose-200">Invalid: ${searchStats.invalid ?? 0}</span>
+                </div>
+              </div>
+              <div class="space-y-1">
+                <p class="text-xs uppercase tracking-[0.3em] text-slate-500">Processing</p>
+                <div class="flex gap-3 text-sm flex-wrap">
+                  <span class="px-3 py-1 rounded-xl bg-slate-800/80">Total: ${procTotal}</span>
+                  <span class="px-3 py-1 rounded-xl bg-emerald-500/10 text-emerald-300">Saved: ${procSuccess}</span>
+                  <span class="px-3 py-1 rounded-xl bg-rose-500/10 text-rose-200">Failed: ${procFailed}</span>
+                  <span class="px-3 py-1 rounded-xl bg-amber-500/10 text-amber-200">Skipped: ${procSkipped}</span>
+                </div>
+              </div>
+            </div>
+            <div class="mt-4">
+              <p class="text-xs uppercase tracking-[0.3em] text-slate-500 mb-2">Last run details</p>
+              ${detailRows.length === 0 ? `
+                <p class="text-sm text-slate-500">No per-link details recorded yet.</p>
+              ` : `
+                <div class="divide-y divide-slate-800 rounded-xl border border-slate-800 overflow-hidden">
+                  ${detailRows.map(d => `
+                    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-2 px-3 py-2 bg-slate-900/40">
+                      <div class="text-sm text-slate-200 truncate max-w-[70%]">${d.title || d.url}</div>
+                      <div class="flex items-center gap-2 text-xs text-slate-400">
+                        <span class="px-2 py-0.5 rounded-full ${d.status === "success" ? "bg-emerald-500/20 text-emerald-200" : d.status === "blocked" ? "bg-rose-500/20 text-rose-200" : d.status === "skipped" ? "bg-amber-500/20 text-amber-200" : "bg-rose-500/20 text-rose-200"}">${d.status}</span>
+                        ${d.reason ? `<span class="text-slate-400">${d.reason}</span>` : ""}
+                      </div>
+                    </div>
+                  `).join("")}
+                </div>
+              `}
             </div>
           </div>
           <div class="mt-4 flex flex-wrap gap-3">

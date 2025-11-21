@@ -120,6 +120,18 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_query_tasks_task_name ON query_tasks(task_name);
                 CREATE INDEX IF NOT EXISTS idx_query_tasks_is_active ON query_tasks(is_active);
             """)
+
+            # Store per-run summaries for visibility in the UI
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS query_task_runs (
+                    id SERIAL PRIMARY KEY,
+                    task_name VARCHAR(255) NOT NULL,
+                    summary JSONB NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE INDEX IF NOT EXISTS idx_query_task_runs_task_name ON query_task_runs(task_name);
+                CREATE INDEX IF NOT EXISTS idx_query_task_runs_created_at ON query_task_runs(created_at DESC);
+            """)
             
             cursor.close()
     
@@ -331,12 +343,23 @@ class Database:
             return [dict(row) for row in results]
 
     def get_all_tasks(self) -> List[Dict]:
-        """List all query tasks"""
+        """List all query tasks with their latest run summary if available"""
         with self.get_connection() as conn:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
             cursor.execute("""
-                SELECT * FROM query_tasks
-                ORDER BY task_name
+                SELECT 
+                    qt.*,
+                    latest.summary AS latest_run_summary,
+                    latest.created_at AS latest_run_at
+                FROM query_tasks qt
+                LEFT JOIN LATERAL (
+                    SELECT summary, created_at
+                    FROM query_task_runs
+                    WHERE task_name = qt.task_name
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                ) AS latest ON TRUE
+                ORDER BY qt.task_name
             """)
             results = cursor.fetchall()
             cursor.close()
@@ -417,6 +440,31 @@ class Database:
                 WHERE task_name = %s
             """, (links_found, task_name))
             cursor.close()
+
+    def record_task_run(self, task_name: str, summary: Dict):
+        """Persist a single run summary for later inspection."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO query_task_runs (task_name, summary)
+                VALUES (%s, %s)
+            """, (task_name, Json(summary)))
+            cursor.close()
+
+    def get_recent_task_runs(self, task_name: str, limit: int = 5) -> List[Dict]:
+        """Fetch recent run summaries for a given task."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor.execute("""
+                SELECT summary, created_at
+                FROM query_task_runs
+                WHERE task_name = %s
+                ORDER BY created_at DESC
+                LIMIT %s
+            """, (task_name, limit))
+            rows = cursor.fetchall()
+            cursor.close()
+            return [dict(row) for row in rows]
     
     def get_statistics(self) -> Dict:
         """Get overall statistics"""

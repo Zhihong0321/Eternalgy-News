@@ -1,5 +1,6 @@
 """Main search module for news discovery"""
 from typing import List, Dict
+from datetime import datetime
 from .search_client import SearchClient
 from .database import Database, hash_url
 from .url_normalizer import normalize_url, is_valid_url
@@ -55,6 +56,7 @@ class NewsSearchModule:
             "urls": results["urls"]
         }
         
+        processing_result = None
         # Auto-process new links if enabled and processor is available
         if (
             AUTO_PROCESS_AFTER_SEARCH
@@ -68,7 +70,39 @@ class NewsSearchModule:
             search_result["processing"] = processing_result
         elif AUTO_PROCESS_AFTER_SEARCH and not getattr(self.processor_worker, "ai_processor", None):
             print("Auto-processing skipped: AI processor not configured.")
+            processing_result = {
+                "status": "skipped",
+                "reason": "AI processor not configured",
+                "details": [],
+                "total": results["new_links"],
+                "success": 0,
+                "failed": 0,
+                "skipped": results["new_links"],
+            }
+            search_result["processing"] = processing_result
         
+        # Persist a run summary for UI visibility
+        search_summary = {
+            "total_urls": len(urls) if urls else 0,
+            "new_links": results["new_links"],
+            "duplicates": results["duplicates"],
+            "invalid": results["invalid"],
+            "urls": results["urls"][:20],
+        }
+
+        processing_summary = processing_result or {}
+        run_summary = {
+            "task_name": task_name,
+            "executed_at": datetime.utcnow().isoformat() + "Z",
+            "search": search_summary,
+            "processing": processing_summary,
+        }
+
+        try:
+            self.db.record_task_run(task_name, run_summary)
+        except Exception as e:
+            print(f"Warning: failed to record task run summary: {e}")
+
         return search_result
     
     def _process_urls(self, results: List[any], task_name: str) -> Dict:

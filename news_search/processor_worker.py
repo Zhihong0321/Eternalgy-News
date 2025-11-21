@@ -69,7 +69,7 @@ class ProcessorWorker:
             domain = extract_domain(link['url'])
             groups[domain].append(link)
         return dict(groups)
-    
+
     def _process_domains(self, domain_groups: Dict[str, List[Dict]]) -> Dict:
         """Process multiple domains concurrently"""
         stats = {
@@ -77,17 +77,16 @@ class ProcessorWorker:
             "success": 0,
             "failed": 0,
             "skipped": 0,
-            "by_domain": {}
+            "by_domain": {},
+            "details": []
         }
         
         with ThreadPoolExecutor(max_workers=MAX_CONCURRENT_DOMAINS) as executor:
-            # Submit each domain for processing
             future_to_domain = {
                 executor.submit(self._process_domain, domain, links): domain
                 for domain, links in domain_groups.items()
             }
             
-            # Collect results as they complete
             for future in as_completed(future_to_domain):
                 domain = future_to_domain[future]
                 try:
@@ -97,11 +96,12 @@ class ProcessorWorker:
                     stats["success"] += domain_stats["success"]
                     stats["failed"] += domain_stats["failed"]
                     stats["skipped"] += domain_stats["skipped"]
+                    stats["details"].extend(domain_stats.get("details", []))
                 except Exception as e:
                     print(f"Error processing domain {domain}: {e}")
         
         return stats
-    
+
     def _process_domain(self, domain: str, links: List[Dict]) -> Dict:
         """Process all links from a single domain with rate limiting"""
         print(f"\n[{domain}] Processing {len(links)} links...")
@@ -110,40 +110,48 @@ class ProcessorWorker:
             "total": len(links),
             "success": 0,
             "failed": 0,
-            "skipped": 0
+            "skipped": 0,
+            "details": []
         }
         
         for i, link in enumerate(links, 1):
-            # Apply rate limiting for same domain
             self._apply_rate_limit(domain)
-            
             print(f"[{domain}] ({i}/{len(links)}) Processing: {link['url']}")
             
             if self.db.is_domain_blacklisted(domain):
-                print(f"[{domain}] ⚠️ Domain is blacklisted, skipping link.")
+                print(f"[{domain}] [warn] Domain is blacklisted, skipping link.")
                 self.db.update_link_status(link['id'], 'blocked', 'Domain blacklisted')
                 stats["skipped"] += 1
+                stats["details"].append({
+                    "link_id": link["id"],
+                    "url": link["url"],
+                    "status": "blocked",
+                    "reason": "Domain blacklisted"
+                })
                 continue
 
-            # Update status to processing
             self.db.update_link_status(link['id'], 'processing')
-            
-            # Process the link
-            status = self._process_single_link(link)
+            result = self._process_single_link(link)
+            status = result.get("status", "failed")
             
             if status == "success":
                 stats["success"] += 1
-                print(f"[{domain}] ✓ Success")
+                print(f"[{domain}] OK Success")
             elif status == "blocked":
                 stats["skipped"] += 1
-                print(f"[{domain}] ⚠️ Blocked by Jina")
+                print(f"[{domain}] BLOCKED Blocked by Jina")
+            elif status == "skipped":
+                stats["skipped"] += 1
+                print(f"[{domain}] SKIPPED Skipped (not configured)")
             else:
                 stats["failed"] += 1
-                print(f"[{domain}] ✗ Failed")
+                print(f"[{domain}] FAIL Failed")
+
+            stats["details"].append(result)
         
         print(f"[{domain}] Completed: {stats['success']} success, {stats['failed']} failed")
         return stats
-    
+
     def _apply_rate_limit(self, domain: str):
         """Apply rate limiting for domain"""
         if domain in self.domain_last_request:
@@ -155,7 +163,7 @@ class ProcessorWorker:
         
         self.domain_last_request[domain] = time.time()
     
-    def _process_single_link(self, link: Dict) -> str:
+    def _process_single_link(self, link: Dict) -> Dict:
         """
         Process a single link with retry logic
         
@@ -163,10 +171,11 @@ class ProcessorWorker:
             link: Link dictionary with id, url, etc.
         
         Returns:
-            "success", "blocked", or "failed"
+            Dict with status and metadata
         """
         url = link['url']
         link_id = link['id']
+        last_error = None
         
         for attempt in range(1, MAX_RETRIES + 1):
             try:
@@ -177,7 +186,13 @@ class ProcessorWorker:
                     if result:
                         if result.get('blocked'):
                             self._handle_blacklisted_link(link, result)
-                            return "blocked"
+                            return {
+                                "link_id": link_id,
+                                "url": url,
+                                "status": "blocked",
+                                "reason": result.get("block_reason") or result.get("error") or "Blocked by reader",
+                                "title": title or result.get("title")
+                            }
 
                         if result.get('success'):
                             self.db.save_processed_content(
@@ -195,27 +210,43 @@ class ProcessorWorker:
                             )
                             
                             self.db.update_link_status(link_id, 'completed')
-                            return "success"
+                            return {
+                                "link_id": link_id,
+                                "url": url,
+                                "status": "success",
+                                "title": result.get("title") or title
+                            }
                         else:
                             error_msg = result.get('error', 'Unknown error')
+                            last_error = error_msg
                             print(f"  Attempt {attempt}/{MAX_RETRIES}: Processing failed - {error_msg}")
                     else:
+                        last_error = "processing returned none"
                         print(f"  Attempt {attempt}/{MAX_RETRIES}: Processing returned None")
                 else:
-                    # Without an AI processor we cannot produce content; leave the link pending.
                     print(f"  [Skip] AI processor not configured; leaving link pending: {url}")
-                    # Leave status as pending so it can be processed once AI is configured.
                     self.db.update_link_status(link_id, 'pending', 'AI processor not configured')
-                    return "failed"
+                    return {
+                        "link_id": link_id,
+                        "url": url,
+                        "status": "skipped",
+                        "reason": "AI processor not configured"
+                    }
                     
             except Exception as e:
-                print(f"  Attempt {attempt}/{MAX_RETRIES}: Error - {str(e)}")
+                last_error = str(e)
+                print(f"  Attempt {attempt}/{MAX_RETRIES}: Error - {last_error}")
         
         self.db.update_link_status(link_id, 'failed', 'Max retries exceeded')
-        return "failed"
+        return {
+            "link_id": link_id,
+            "url": url,
+            "status": "failed",
+            "reason": last_error or "Max retries exceeded"
+        }
 
     def _handle_blacklisted_link(self, link: Dict, result: Dict):
-        '''Record the blocked link/domain and update status.'''
+        """Record the blocked link/domain and update status."""
         url = link['url']
         domain = extract_domain(url)
         reason = result.get('block_reason') or result.get('metadata', {}).get('block_reason', 'Jina Reader blocked')
@@ -224,13 +255,14 @@ class ProcessorWorker:
         self.db.update_link_status(link['id'], 'blocked', reason)
 
     def _title_from_url(self, url: str) -> str:
-        '''Derive a simple title from the URL for logging.'''
+        """Derive a simple title from the URL for logging."""
         from urllib.parse import urlparse, unquote
         parsed = urlparse(url)
         segments = [seg for seg in parsed.path.split('/') if seg]
         candidate = segments[-1] if segments else parsed.netloc
         candidate = candidate.replace('-', ' ').replace('_', ' ')
         return unquote(candidate)
+
     def process_specific_links(self, link_ids: List[int]) -> Dict:
         """Process specific links by ID"""
         links = self.db.get_links_by_ids(link_ids)
@@ -240,7 +272,8 @@ class ProcessorWorker:
                 "total": 0,
                 "success": 0,
                 "failed": 0,
-                "skipped": 0
+                "skipped": 0,
+                "details": []
             }
         
         domain_groups = self._group_by_domain(links)
