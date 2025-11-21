@@ -275,6 +275,9 @@
             <button data-task="${task.task_name}" class="reprocess-task-btn px-4 py-2 text-sm rounded-2xl border border-amber-400 text-amber-200 hover:bg-amber-500/10 transition">
               Reprocess pending/failed
             </button>
+            <button data-task="${task.task_name}" class="reprocess-missing-btn px-4 py-2 text-sm rounded-2xl border border-slate-400 text-slate-200 hover:bg-slate-500/10 transition">
+              Reprocess completed (empty)
+            </button>
           </div>
         `;
 
@@ -292,6 +295,10 @@
 
       document.querySelectorAll(".reprocess-task-btn").forEach(btn => {
         btn.addEventListener("click", () => reprocessTask(btn.dataset.task, btn));
+      });
+
+      document.querySelectorAll(".reprocess-missing-btn").forEach(btn => {
+        btn.addEventListener("click", () => reprocessMissing(btn.dataset.task, btn));
       });
     }
 
@@ -349,15 +356,16 @@
           <div class="divide-y divide-slate-800 rounded-xl border border-slate-800 overflow-hidden">
             ${items.map(it => `
               <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-2 px-3 py-2 bg-slate-900/30">
-                <div class="text-sm text-slate-200 truncate max-w-[65%]">${it.title || it.url}</div>
-                <div class="flex items-center gap-2 text-xs text-slate-400">
-                  <span class="px-2 py-0.5 rounded-full ${it.status === "completed" ? "bg-emerald-500/20 text-emerald-200" : it.status === "failed" ? "bg-rose-500/20 text-rose-200" : it.status === "pending" ? "bg-amber-500/20 text-amber-200" : "bg-slate-700"}">${it.status || "unknown"}</span>
-                  ${it.url ? `<a class="text-emerald-300 underline" href="${it.url}" target="_blank" rel="noreferrer">Link</a>` : ""}
-                </div>
+              <div class="text-sm text-slate-200 truncate max-w-[65%]">${it.title || it.url}</div>
+              <div class="flex items-center gap-2 text-xs text-slate-400">
+                <span class="px-2 py-0.5 rounded-full ${it.status === "completed" ? "bg-emerald-500/20 text-emerald-200" : it.status === "failed" ? "bg-rose-500/20 text-rose-200" : it.status === "pending" ? "bg-amber-500/20 text-amber-200" : "bg-slate-700"}">${it.status || "unknown"}</span>
+                ${it.url ? `<a class="text-emerald-300 underline" href="${it.url}" target="_blank" rel="noreferrer">Link</a>` : ""}
+                ${it.translated_content || it.content ? `<button class="preview-btn px-2 py-0.5 rounded bg-slate-800 text-emerald-200 text-xs" data-content="${(it.translated_content || it.content || "").replace(/"/g, '&quot;')}">Preview</button>` : ""}
               </div>
-            `).join("")}
-          </div>
-        `;
+            </div>
+          `).join("")}
+        </div>
+      `;
       } catch (e) {
         console.error(e);
         slot.innerHTML = `<p class="text-sm text-rose-400">Failed to load recent items.</p>`;
@@ -385,6 +393,36 @@
         button.textContent = original;
       }
     }
+
+    async function reprocessMissing(taskName, button) {
+      button.disabled = true;
+      const original = button.textContent;
+      button.textContent = "Reprocessing.";
+      try {
+        const res = await fetch(`/api/tasks/${encodeURIComponent(taskName)}/reprocess-missing`, { method: "POST" });
+        const payload = await res.json();
+        if (!res.ok || !payload.success) {
+          showToast(payload.detail || payload.error || "Reprocess failed", "error");
+        } else {
+          showToast(`Reprocess triggered (${payload.result?.total ?? payload.requested ?? 0} links)`);
+          await loadTasks();
+        }
+      } catch (e) {
+        console.error(e);
+        showToast("Reprocess failed", "error");
+      } finally {
+        button.disabled = false;
+        button.textContent = original;
+      }
+    }
+
+    document.body.addEventListener("click", (event) => {
+      if (event.target.classList.contains("preview-btn")) {
+        const content = event.target.dataset.content || "";
+        if (!content) return;
+        alert(content.slice(0, 1500));
+      }
+    });
 
     function openEditor(taskName) {
       const task = currentTasks.find(t => t.task_name === taskName);

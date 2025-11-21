@@ -389,6 +389,32 @@ def reprocess_task_links(task_name: str, limit: int = 50):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/api/tasks/{task_name}/reprocess-missing")
+def reprocess_completed_missing(task_name: str, limit: int = 50):
+    """
+    Reprocess links marked completed but without processed_content rows.
+    """
+    try:
+        links = db.get_completed_missing_content(task_name, limit=limit)
+        if not links:
+            return {"success": True, "processed": 0, "message": "No completed links missing content"}
+
+        if not processor_worker or not getattr(processor_worker, "ai_processor", None):
+            raise HTTPException(status_code=400, detail="AI processor is not configured")
+
+        link_ids = [item["id"] for item in links]
+        result = processor_worker.process_specific_links(link_ids)
+        return {
+            "success": True,
+            "requested": len(link_ids),
+            "result": result,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/health")
 def health():
     """

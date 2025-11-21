@@ -488,7 +488,7 @@ class Database:
             return [dict(row) for row in rows]
 
     def get_recent_processed(self, task_name: str, limit: int = 5) -> List[Dict]:
-        """Fetch recent processed items (title/url/status) for a task."""
+        """Fetch recent processed items (title/url/status/content) for a task."""
         with self.get_connection() as conn:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
             cursor.execute("""
@@ -499,7 +499,8 @@ class Database:
                     nl.error_message,
                     nl.processed_at,
                     pc.title,
-                    pc.translated_content
+                    pc.translated_content,
+                    pc.content
                 FROM news_links nl
                 LEFT JOIN processed_content pc ON pc.link_id = nl.id
                 WHERE nl.source_task = %s
@@ -521,6 +522,24 @@ class Database:
                 ORDER BY discovered_at DESC
                 LIMIT %s
             """, (task_name, statuses, limit))
+            rows = cursor.fetchall()
+            cursor.close()
+            return [dict(row) for row in rows]
+
+    def get_completed_missing_content(self, task_name: str, limit: int = 50) -> List[Dict]:
+        """Find completed links that have no processed_content to allow reprocessing."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor.execute("""
+                SELECT nl.id, nl.url, nl.title, nl.status
+                FROM news_links nl
+                LEFT JOIN processed_content pc ON pc.link_id = nl.id
+                WHERE nl.source_task = %s
+                  AND nl.status = 'completed'
+                  AND pc.link_id IS NULL
+                ORDER BY nl.processed_at DESC NULLS LAST, nl.discovered_at DESC
+                LIMIT %s
+            """, (task_name, limit))
             rows = cursor.fetchall()
             cursor.close()
             return [dict(row) for row in rows]
