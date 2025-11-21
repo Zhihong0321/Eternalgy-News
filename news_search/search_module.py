@@ -46,9 +46,8 @@ User intent: {user_intent}
         print(f"Executing search for task: {task_name}")
         print(f"Prompt: {prompt}")
 
-        # Build a client with per-task model if provided
-        model_name = model_override or None
-        search_client = SearchClient(model=model_name) if model_name else self.search_client
+        # Always use the default search client; model overrides are ignored for search
+        search_client = self.search_client
 
         wrapped_prompt = self._build_search_prompt(prompt)
         
