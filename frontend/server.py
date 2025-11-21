@@ -61,14 +61,12 @@ def _check_database() -> Dict[str, str]:
 
 def _check_ai_api() -> Dict[str, str]:
     """
-    Optionally validate the AI API key by issuing a minimal chat completion.
-    Disabled unless HEALTHCHECK_PING_AI=true to avoid unintended usage charges.
+    Validate the AI API key by issuing a minimal chat completion.
+    If no key is set, report as skipped.
     """
     ai_config = AIConfig.from_env()
     if not ai_config.api_key:
         return {"status": "skipped", "reason": "AI_API_KEY not set"}
-    if not HEALTHCHECK_PING_AI:
-        return {"status": "skipped", "reason": "HEALTHCHECK_PING_AI is false"}
 
     try:
         client = AIClient(
@@ -91,14 +89,12 @@ def _check_ai_api() -> Dict[str, str]:
 
 def _check_jina_reader() -> Dict[str, str]:
     """
-    Optionally hit Jina Reader with a tiny request to confirm API reachability.
-    Disabled unless HEALTHCHECK_PING_JINA=true to avoid unnecessary calls.
+    Hit Jina Reader with a tiny request to confirm API reachability.
+    If no key is set, report as skipped.
     """
     config = JinaReaderConfig()
     if not config.api_key:
         return {"status": "skipped", "reason": "JINA_API_KEY not set"}
-    if not HEALTHCHECK_PING_JINA:
-        return {"status": "skipped", "reason": "HEALTHCHECK_PING_JINA is false"}
 
     test_url = "https://example.com"
     endpoint = f"{config.reader_base_url}/{test_url}"
@@ -245,9 +241,6 @@ from ai_processing.config import AIConfig
 from ai_processing.services.ai_client import AIClient
 from ai_processing.services.jina_reader import JinaReaderConfig
 
-HEALTHCHECK_PING_AI = os.getenv("HEALTHCHECK_PING_AI", "false").lower() == "true"
-HEALTHCHECK_PING_JINA = os.getenv("HEALTHCHECK_PING_JINA", "false").lower() == "true"
-
 # Try to initialize AI processor
 try:
     ai_processor = ArticleProcessorWithContent.from_env()
@@ -361,8 +354,8 @@ def health():
     """
     Health check endpoint that validates:
     - Database connectivity
-    - Optional AI API token handshake (set HEALTHCHECK_PING_AI=true)
-    - Optional Jina Reader handshake (set HEALTHCHECK_PING_JINA=true)
+    - AI API token handshake when a key is provided
+    - Jina Reader handshake when a key is provided
     """
     checks = {
         "database": _check_database(),
