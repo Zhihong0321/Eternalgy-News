@@ -19,7 +19,7 @@ class ProcessorWorker:
         Initialize processor worker
         
         Args:
-            ai_processor: Your AI processing module (Jina Reader + translator)
+            ai_processor: Your AI processing module (reader + translator)
                          Should have a process(url) method that returns processed content
         """
         self.db = Database()
@@ -139,7 +139,7 @@ class ProcessorWorker:
                 print(f"[{domain}] OK Success")
             elif status == "blocked":
                 stats["skipped"] += 1
-                print(f"[{domain}] BLOCKED Blocked by Jina")
+                print(f"[{domain}] BLOCKED Blocked by reader")
             elif status == "skipped":
                 stats["skipped"] += 1
                 print(f"[{domain}] SKIPPED Skipped (not configured)")
@@ -249,7 +249,7 @@ class ProcessorWorker:
         """Record the blocked link/domain and update status."""
         url = link['url']
         domain = extract_domain(url)
-        reason = result.get('block_reason') or result.get('metadata', {}).get('block_reason', 'Jina Reader blocked')
+        reason = result.get('block_reason') or result.get('metadata', {}).get('block_reason', 'Reader blocked')
         title = link.get('title') or self._title_from_url(url)
         self.db.add_blacklisted_site(domain, url, title, reason)
         self.db.update_link_status(link['id'], 'blocked', reason)

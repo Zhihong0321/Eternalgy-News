@@ -12,7 +12,7 @@
     <header class="flex items-center justify-between">
       <div>
         <p class="text-xs uppercase tracking-[0.4em] text-emerald-300">Pipeline Reveal</p>
-        <h1 class="text-2xl font-semibold">Inspect search → Jina → Rewriter</h1>
+        <h1 class="text-2xl font-semibold">Inspect search → Reader → Rewriter</h1>
       </div>
       <a href="/" class="text-sm text-emerald-300 underline">Back to feed</a>
     </header>
@@ -43,11 +43,11 @@
       </div>
     </section>
 
-    <!-- Jina -->
+    <!-- Reader -->
     <section class="bg-slate-900/70 border border-slate-800 rounded-3xl p-5 space-y-4">
       <div class="flex items-center justify-between">
-        <h2 class="text-lg font-semibold">2) Jina Reader</h2>
-        <button id="run-jina" class="px-4 py-2 rounded-xl bg-emerald-500 text-slate-900 font-semibold text-sm hover:bg-emerald-400">Send to Jina</button>
+        <h2 class="text-lg font-semibold">2) Reader (GPT-5 search)</h2>
+        <button id="run-jina" class="px-4 py-2 rounded-xl bg-emerald-500 text-slate-900 font-semibold text-sm hover:bg-emerald-400">Fetch article</button>
       </div>
       <input id="jina-url" class="w-full bg-slate-950/60 border border-slate-800 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-400 outline-none" placeholder="Pick a URL from search results or paste one" />
       <div class="grid md:grid-cols-2 gap-4">
@@ -70,10 +70,10 @@
       </div>
       <div class="grid md:grid-cols-2 gap-3">
         <div class="space-y-2">
-          <input id="rw-title" class="w-full bg-slate-950/60 border border-slate-800 rounded-xl px-3 py-2 text-sm" placeholder="Title from Jina" />
+          <input id="rw-title" class="w-full bg-slate-950/60 border border-slate-800 rounded-xl px-3 py-2 text-sm" placeholder="Title from reader" />
           <input id="rw-date" class="w-full bg-slate-950/60 border border-slate-800 rounded-xl px-3 py-2 text-sm" placeholder="Date (optional)" />
           <input id="rw-url" class="w-full bg-slate-950/60 border border-slate-800 rounded-xl px-3 py-2 text-sm" placeholder="URL" />
-          <textarea id="rw-content" rows="6" class="w-full bg-slate-950/60 border border-slate-800 rounded-xl px-3 py-2 text-sm" placeholder="Content from Jina"></textarea>
+          <textarea id="rw-content" rows="6" class="w-full bg-slate-950/60 border border-slate-800 rounded-xl px-3 py-2 text-sm" placeholder="Content from reader"></textarea>
         </div>
         <div class="space-y-2">
           <input id="rw-model" class="w-full bg-slate-950/60 border border-slate-800 rounded-xl px-3 py-2 text-sm" placeholder="Rewriter model, e.g. openai/gpt-oss-20b:free" />
@@ -187,7 +187,7 @@ User intent: ${intent}`.trim();
       jinaParsed.textContent = "";
       jinaRaw.value = "";
       showErrorPanel("");
-      setLoading(runJinaBtn, true, "Sending...");
+      setLoading(runJinaBtn, true, "Fetching...");
       try {
         const res = await fetch("/api/pipeline/jina", {
           method: "POST",
@@ -195,14 +195,14 @@ User intent: ${intent}`.trim();
           body: JSON.stringify({ url: jinaUrl.value || "" })
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.detail || "Jina failed");
+        if (!res.ok) throw new Error(data.detail || "Reader failed");
         jinaParsed.textContent = JSON.stringify(data.parsed, null, 2);
         jinaRaw.value = JSON.stringify(data.parsed, null, 2);
         // Autofill rewriter fields
         document.getElementById("rw-title").value = data.parsed?.title || "";
         document.getElementById("rw-url").value = data.parsed?.url || jinaUrl.value;
         document.getElementById("rw-content").value = data.parsed?.content || "";
-        showToast("Jina done");
+        showToast("Reader done");
       } catch (e) {
         console.error(e);
         showErrorPanel(e.message);

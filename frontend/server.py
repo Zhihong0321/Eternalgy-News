@@ -94,37 +94,15 @@ def _check_ai_api() -> Dict[str, str]:
         return {"status": "failed", "error": str(exc)}
 
 
-def _check_jina_reader() -> Dict[str, str]:
+def _check_reader() -> Dict[str, str]:
     """
-    Hit Jina Reader with a tiny request to confirm API reachability.
-    If no key is set, report as skipped.
+    Validate the search-based reader is configured.
+    We treat missing credentials as skipped; no live call to avoid token burn.
     """
-    config = JinaReaderConfig()
+    config = JinaReaderConfig()  # alias for ReaderConfig
     if not config.api_key:
-        return {"status": "skipped", "reason": "JINA_API_KEY not set"}
-
-    test_url = "https://example.com"
-    endpoint = f"{config.reader_base_url}/{test_url}"
-    headers = {
-        "Accept": "application/json",
-        "X-Return-Format": config.return_format,
-        "X-Retain-Images": config.retain_images,
-        "Authorization": f"Bearer {config.api_key}",
-    }
-
-    if config.no_cache:
-        headers["X-No-Cache"] = "true"
-
-    headers.update(config.extra_headers)
-
-    try:
-        resp = requests.get(endpoint, headers=headers, timeout=min(config.timeout, 10))
-        status = resp.status_code
-        if status == 200:
-            return {"status": "ok", "status_code": status}
-        return {"status": "failed", "status_code": status, "detail": resp.text[:80]}
-    except Exception as exc:
-        return {"status": "failed", "error": str(exc)}
+        return {"status": "skipped", "reason": "READER_API_KEY/AI_API_KEY not set"}
+    return {"status": "ok", "model": config.model}
 
 
 @app.get("/api/news")
@@ -525,12 +503,14 @@ def pipeline_search(body: Dict):
 
 @app.post("/api/pipeline/jina")
 def pipeline_jina(body: Dict):
-    """Fetch a URL via Jina Reader and return raw/parsed."""
+    """Fetch a URL via the search-based reader and return parsed content."""
     url = (body or {}).get("url", "").strip()
     if not url:
         raise HTTPException(status_code=400, detail="url is required")
     reader = JinaReader()
     result = reader.read_url(url)
+    if not result or result.get("error"):
+        raise HTTPException(status_code=500, detail=result.get("error", "Reader failed"))
     return {"success": True, "parsed": result}
 
 
@@ -631,7 +611,7 @@ def health():
     checks = {
         "database": _check_database(),
         "ai_api": _check_ai_api(),
-        "jina_reader": _check_jina_reader(),
+        "reader": _check_reader(),
     }
 
     overall_status = "ok"

@@ -81,7 +81,7 @@ class ArticleProcessorWithContent:
             batch_size=self.config.batch_size
         )
         
-        # Jina Reader for fetching article copy
+        # Reader for fetching article copy
         if jina_reader_config:
             self.jina_reader_config = jina_reader_config
         else:
@@ -174,14 +174,14 @@ class ArticleProcessorWithContent:
         return domain
 
     def _extract_content_batch(self, articles: List[dict]) -> List[dict]:
-        """Extract content from URLs for all articles using the Jina Reader."""
+        """Extract content from URLs for all articles using the search-backed reader."""
         for article in articles:
             url = article.get('url')
             metadata = article.get('metadata') or {}
             article['metadata'] = metadata
 
             if url:
-                print(f"  Extracting via Jina Reader: {url[:60]}...")
+                print(f"  Extracting via reader: {url[:60]}...")
                 extracted = self.jina_reader.read_url(url)
 
                 if extracted and extracted.get('content'):
@@ -193,7 +193,7 @@ class ArticleProcessorWithContent:
                     article['content'] = article.get('title', '')
                     article['excerpt'] = article.get('title', '')
                     metadata['blocked'] = extracted.get('blocked', False) if isinstance(extracted, dict) else False
-                    metadata['block_reason'] = extracted.get('error') if isinstance(extracted, dict) else "JinaReader failed"
+                    metadata['block_reason'] = extracted.get('error') if isinstance(extracted, dict) else "Reader failed"
                     metadata['block_status'] = extracted.get('status_code') if isinstance(extracted, dict) else None
                     metadata['block_domain'] = self._get_domain(url)
                     metadata['original_url'] = url
