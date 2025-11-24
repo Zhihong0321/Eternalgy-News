@@ -101,7 +101,7 @@ def _check_reader() -> Dict[str, str]:
     """
     config = JinaReaderConfig()  # alias for ReaderConfig
     if not config.api_key:
-        return {"status": "skipped", "reason": "READER_API_KEY/AI_API_KEY not set"}
+        return {"status": "skipped", "reason": "READER_API_KEY/SEARCH_API_KEY not set"}
     return {"status": "ok", "model": config.model}
 
 

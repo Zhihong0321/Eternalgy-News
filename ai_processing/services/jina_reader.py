@@ -22,14 +22,19 @@ class ReaderConfig:
     max_content_length: int = 900  # keep body compact
 
     def __post_init__(self):
+        # Prefer dedicated reader/search credentials; avoid rewriter/AI defaults
         if not self.api_key:
-            self.api_key = os.getenv("READER_API_KEY") or os.getenv("AI_API_KEY", "")
-        env_url = os.getenv("READER_API_URL") or os.getenv("AI_API_URL")
+            self.api_key = (
+                os.getenv("READER_API_KEY")
+                or os.getenv("SEARCH_API_KEY")
+                or os.getenv("AI_API_KEY", "")
+            )
+        env_url = os.getenv("READER_API_URL") or os.getenv("SEARCH_API_URL")
         if env_url:
             self.api_url = env_url.rstrip("/")
             if not self.api_url.endswith("/chat/completions"):
                 self.api_url = f"{self.api_url}/chat/completions"
-        env_model = os.getenv("READER_MODEL")
+        env_model = os.getenv("READER_MODEL") or os.getenv("SEARCH_MODEL")
         if env_model:
             self.model = env_model
 
