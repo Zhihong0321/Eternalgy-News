@@ -503,6 +503,12 @@ def pipeline_search(body: Dict):
 
 @app.post("/api/pipeline/jina")
 def pipeline_jina(body: Dict):
+    """Fetch a URL via the search-based reader and return parsed content (legacy path)."""
+    return pipeline_reader(body)
+
+
+@app.post("/api/pipeline/reader")
+def pipeline_reader(body: Dict):
     """Fetch a URL via the search-based reader and return parsed content."""
     url = (body or {}).get("url", "").strip()
     if not url:

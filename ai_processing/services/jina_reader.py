@@ -29,12 +29,23 @@ class ReaderConfig:
                 or os.getenv("SEARCH_API_KEY")
                 or os.getenv("AI_API_KEY", "")
             )
-        env_url = os.getenv("READER_API_URL") or os.getenv("SEARCH_API_URL")
+
+        env_url = (os.getenv("READER_API_URL") or os.getenv("SEARCH_API_URL") or "").strip()
         if env_url:
-            self.api_url = env_url.rstrip("/")
-            if not self.api_url.endswith("/chat/completions"):
-                self.api_url = f"{self.api_url}/chat/completions"
-        env_model = os.getenv("READER_MODEL") or os.getenv("SEARCH_MODEL")
+            clean_url = env_url.rstrip().rstrip("/")
+            # Strip any existing /chat/completions suffix to avoid duplication
+            if clean_url.endswith("/chat/completions"):
+                clean_url = clean_url[: -len("/chat/completions")]
+            self.api_url = clean_url + "/chat/completions"
+        else:
+            # Normalize default
+            clean_url = self.api_url.rstrip().rstrip("/")
+            if not clean_url.endswith("/chat/completions"):
+                self.api_url = clean_url + "/chat/completions"
+            else:
+                self.api_url = clean_url
+
+        env_model = (os.getenv("READER_MODEL") or os.getenv("SEARCH_MODEL") or "").strip()
         if env_model:
             self.model = env_model
 

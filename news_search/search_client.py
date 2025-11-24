@@ -7,7 +7,10 @@ from .config import SEARCH_API_URL, SEARCH_API_KEY, SEARCH_MODEL, REQUEST_TIMEOU
 
 class SearchClient:
     def __init__(self, api_key: str = None, model: str = None):
-        self.api_url = SEARCH_API_URL
+        base_url = (SEARCH_API_URL or "").strip()
+        if base_url.endswith("/chat/completions"):
+            base_url = base_url[: -len("/chat/completions")]
+        self.api_url = f"{base_url}/chat/completions" if base_url else ""
         self.api_key = api_key or SEARCH_API_KEY
         self.model = model or SEARCH_MODEL
         self.last_error: Optional[str] = None

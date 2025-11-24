@@ -189,7 +189,7 @@ User intent: ${intent}`.trim();
       showErrorPanel("");
       setLoading(runJinaBtn, true, "Fetching...");
       try {
-        const res = await fetch("/api/pipeline/jina", {
+        const res = await fetch("/api/pipeline/reader", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ url: jinaUrl.value || "" })
