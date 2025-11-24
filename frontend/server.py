@@ -464,7 +464,7 @@ def pipeline_search(body: Dict):
                     }
                 }
             },
-            timeout=30
+            timeout=60
         )
         raw_response = resp.text
         resp.raise_for_status()
@@ -541,7 +541,7 @@ def pipeline_rewrite(body: Dict):
         api_url=api_url,
         api_key=api_key,
         model=model or os.getenv("AI_MODEL", ""),
-        timeout=30,
+        timeout=60,
         max_retries=2
     )
     raw_response = None
