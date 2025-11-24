@@ -522,17 +522,17 @@ def pipeline_rewrite(body: Dict):
     url = (body or {}).get("url", "")
     content = (body or {}).get("content", "")
     prompt_template = (body or {}).get("prompt", "")
-    model = (body or {}).get("model", "") or os.getenv("AI_MODEL", "")
-    api_key = os.getenv("AI_API_KEY", "")
-    api_url = os.getenv("AI_API_URL", "")
+    model = (body or {}).get("model", "") or os.getenv("REWRITER_MODEL", os.getenv("AI_MODEL", "openai/gpt-oss-20b:free"))
+    api_key = os.getenv("REWRITER_API_KEY") or os.getenv("AI_API_KEY", "")
+    api_url = os.getenv("REWRITER_API_URL") or os.getenv("AI_API_URL", "https://openrouter.ai/api/v1")
     if not prompt_template:
         raise HTTPException(status_code=400, detail="prompt is required")
     if not content:
         raise HTTPException(status_code=400, detail="content is required")
     if not api_key:
-        raise HTTPException(status_code=500, detail="AI_API_KEY is not configured on the server")
+        raise HTTPException(status_code=500, detail="REWRITER_API_KEY/AI_API_KEY is not configured on the server")
     if not api_url:
-        raise HTTPException(status_code=500, detail="AI_API_URL is not configured on the server")
+        raise HTTPException(status_code=500, detail="REWRITER_API_URL/AI_API_URL is not configured on the server")
 
     # Substitute placeholders if present
     prompt = prompt_template.replace("{title}", title).replace("{date}", date).replace("{url}", url).replace("{content}", content)

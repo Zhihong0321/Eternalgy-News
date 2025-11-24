@@ -5,6 +5,7 @@ Orchestrates content extraction, cleaning, and translation pipeline
 
 from datetime import datetime
 from typing import List, Optional
+import os
 from .config import AIConfig
 from .models.article import RawArticle, ProcessedArticle
 from .services.ai_client import AIClient
@@ -72,6 +73,18 @@ class ArticleProcessorWithContent:
             timeout=self.config.timeout,
             max_retries=self.config.max_retries
         )
+
+        # Separate client for rewrites (default to OpenRouter free model unless overridden)
+        rewriter_api_url = os.getenv("REWRITER_API_URL", "https://openrouter.ai/api/v1")
+        rewriter_api_key = os.getenv("REWRITER_API_KEY") or os.getenv("AI_API_KEY", "")
+        rewriter_model = os.getenv("REWRITER_MODEL", "openai/gpt-oss-20b:free")
+        self.rewriter_client = AIClient(
+            api_url=rewriter_api_url,
+            api_key=rewriter_api_key,
+            model=rewriter_model,
+            timeout=self.config.timeout,
+            max_retries=self.config.max_retries
+        )
         
         self.language_detector = LanguageDetector()
         
@@ -95,7 +108,7 @@ class ArticleProcessorWithContent:
         
         # News Rewriter (handles BBcode summary + translations)
         self.news_rewriter = NewsRewriter(
-            ai_client=self.ai_client,
+            ai_client=self.rewriter_client,
             temperature=0.3,
             max_tokens=1200
         )

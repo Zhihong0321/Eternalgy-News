@@ -5,7 +5,7 @@ from urllib.parse import urlparse, parse_qs
 # API Configuration
 SEARCH_API_URL = "https://api.bltcy.ai/v1/chat/completions"
 SEARCH_API_KEY = os.getenv("SEARCH_API_KEY", "sk-jW4WLdgCGCshSyFY9VbKXwj8y2YXclFHxw2x2WbXElFkcAlD")
-SEARCH_MODEL = "gpt-4o-mini-search-preview"
+SEARCH_MODEL = "gpt-5-search-api-2025-10-14"
 
 
 def _parse_database_url(db_url: str):
